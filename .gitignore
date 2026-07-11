@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local runtime data. These files can contain wallet addresses,
+# balances, snapshot history, and copied DeBank HTML.
+data/
+*.jsonl
+sample-*.html
+*-debank.html
+
+# Local configuration and editor noise
+.env
+.env.*
+.DS_Store
+.vscode/
+.idea/
