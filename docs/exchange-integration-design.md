@@ -3,7 +3,7 @@
 - 文書版: 1.0
 - 作成日: 2026-07-11
 - 対象: 個人利用・ローカル Web アプリ
-- 状態: 実装前設計（本書合意後に実装）
+- 状態: 実装済み仕様（2026-07-12時点の画面・取得処理を反映）
 - 関連文書: [crypto-asset-tracker-design.md](crypto-asset-tracker-design.md)、[dashboard-ux-redesign.md](dashboard-ux-redesign.md)
 
 ## 1. 設計の結論
