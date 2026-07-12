@@ -29,8 +29,6 @@ alternative.
 from __future__ import annotations
 
 import os
-import random
-import time
 from dataclasses import dataclass
 
 DEBANK_PROFILE_URL = "https://debank.com/profile/{address}"
@@ -81,8 +79,9 @@ def _wait_for_data(page, timeout_ms: int = 25000) -> None:
 def fetch_wallets_html(
     wallets: list[dict],
     headless: bool | None = None,
-    min_pause_s: float = 3.0,
-    max_pause_s: float = 7.0,
+    min_pause_s: float = 0.0,
+    max_pause_s: float = 0.0,
+    on_result=None,
 ) -> list[WalletFetchResult]:
     """Sequentially open each wallet's DeBank profile in its own tab, capture
     the rendered HTML, close the tab, then move to the next wallet.
@@ -100,7 +99,10 @@ def fetch_wallets_html(
         ) from exc
 
     if headless is None:
-        headless = os.environ.get("DEBANK_HEADLESS", "0") == "1"
+        # Chrome for Testing may crash while closing a visible macOS window.
+        # Headless is the stable default; set DEBANK_HEADLESS=0 when a visible
+        # browser is needed for debugging.
+        headless = os.environ.get("DEBANK_HEADLESS", "1") == "1"
 
     results: list[WalletFetchResult] = []
     with sync_playwright() as p:
@@ -119,13 +121,17 @@ def fetch_wallets_html(
                     )
                     _wait_for_data(page)
                     html = page.content()
-                    results.append(WalletFetchResult(wallet["wallet_id"], name, address, html, None))
+                    result = WalletFetchResult(wallet["wallet_id"], name, address, html, None)
+                    results.append(result)
+                    if on_result:
+                        on_result(result)
                 except Exception as exc:  # noqa: BLE001 - keep going with remaining wallets
-                    results.append(WalletFetchResult(wallet["wallet_id"], name, address, None, str(exc)))
+                    result = WalletFetchResult(wallet["wallet_id"], name, address, None, str(exc))
+                    results.append(result)
+                    if on_result:
+                        on_result(result)
                 finally:
                     page.close()
-                if i < len(wallets) - 1:
-                    time.sleep(random.uniform(min_pause_s, max_pause_s))
         finally:
             context.close()
             browser.close()

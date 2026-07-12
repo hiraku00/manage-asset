@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -365,12 +366,68 @@ def json_response(handler: BaseHTTPRequestHandler, payload: dict, status: int = 
     handler.wfile.write(body)
 
 
+AUTO_IMPORT_JOBS: dict[str, dict] = {}
+AUTO_IMPORT_LOCK = threading.Lock()
+
+
+def start_auto_import_job(as_of_date: str, target_wallets: list[dict], run_id: str) -> None:
+    job = {"run_id": run_id, "status": "running", "total": len(target_wallets), "completed": 0, "success": 0, "failed": 0, "results": [], "started_at": time.monotonic()}
+    with AUTO_IMPORT_LOCK:
+        AUTO_IMPORT_JOBS[run_id] = job
+
+    def update(result: dict) -> None:
+        with AUTO_IMPORT_LOCK:
+            job["results"].append(result)
+            job["completed"] += 1
+            if result["status"] == "success":
+                job["success"] += 1
+            else:
+                job["failed"] += 1
+
+    def worker() -> None:
+        try:
+            from debank_auto import DebankAutoError, fetch_wallets_html
+
+            def handle_fetch(fetched) -> None:
+                if fetched.html is None:
+                    append_jsonl(RUNS_FILE, {"schema_version": 1, "record_type": "import_event", "run_id": run_id, "wallet_id": fetched.wallet_id, "wallet_name": fetched.name, "as_of_date": as_of_date, "captured_at": now_iso(), "status": "error", "error": fetched.error})
+                    update({"wallet_id": fetched.wallet_id, "name": fetched.name, "status": "error", "error": fetched.error})
+                    return
+                wallet = next(x for x in target_wallets if x["wallet_id"] == fetched.wallet_id)
+                try:
+                    record = build_snapshot_record(wallet, fetched.html, as_of_date, run_id=run_id, source="debank_auto_browser")
+                    append_jsonl(SNAPSHOTS_FILE, record)
+                    append_jsonl(RUNS_FILE, {"schema_version": 1, "record_type": "import_event", "run_id": run_id, "wallet_id": fetched.wallet_id, "wallet_name": fetched.name, "as_of_date": as_of_date, "captured_at": record["captured_at"], "status": "success"})
+                    update({"wallet_id": fetched.wallet_id, "name": fetched.name, "status": "success", "total_usd": record["total_usd"]})
+                except Exception as exc:
+                    update({"wallet_id": fetched.wallet_id, "name": fetched.name, "status": "error", "error": str(exc)})
+
+            fetch_wallets_html(target_wallets, on_result=handle_fetch)
+            with AUTO_IMPORT_LOCK:
+                job["status"] = "completed"
+        except Exception as exc:
+            with AUTO_IMPORT_LOCK:
+                job["status"] = "failed"
+                job["error"] = str(exc)
+
+    threading.Thread(target=worker, name=f"auto-import-{run_id}", daemon=True).start()
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         return
 
     def do_GET(self):
         path = urlparse(self.path).path
+        if path.startswith("/api/wallets/auto-import/"):
+            run_id = path.rsplit("/", 1)[-1]
+            with AUTO_IMPORT_LOCK:
+                job = dict(AUTO_IMPORT_JOBS.get(run_id, {}))
+                job["results"] = list(AUTO_IMPORT_JOBS.get(run_id, {}).get("results", []))
+            if not job:
+                return json_response(self, {"error": "実行が見つかりません"}, 404)
+            job["elapsed_seconds"] = round(time.monotonic() - job["started_at"], 1) if job["status"] == "running" else round(time.monotonic() - job["started_at"], 1)
+            return json_response(self, job)
         if path == "/api/state":
             wallets = load_wallets()
             snapshots = latest_snapshots()
@@ -402,6 +459,41 @@ class Handler(BaseHTTPRequestHandler):
             return json_response(self, {"error": "リクエストサイズが大きすぎます"}, 413)
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
+            if path == "/api/wallets/auto-import":
+                as_of_date = body.get("as_of_date") or date.today().isoformat()
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", as_of_date):
+                    raise ValueError("基準日はYYYY-MM-DDで指定してください")
+                date.fromisoformat(as_of_date)
+                target_wallets = [w for w in load_wallets() if w.get("enabled", True)]
+                if not target_wallets:
+                    raise ValueError("有効なウォレットが登録されていません")
+                run_id = "run_" + uuid.uuid4().hex[:12]
+                start_auto_import_job(as_of_date, target_wallets, run_id)
+                return json_response(self, {"run_id": run_id, "total": len(target_wallets), "status": "running"}, 202)
+            if path.startswith("/api/wallets/auto-import/"):
+                wallet_id = path.rsplit("/", 1)[-1]
+                as_of_date = body.get("as_of_date") or date.today().isoformat()
+                date.fromisoformat(as_of_date)
+                target_wallets = [w for w in load_wallets() if w.get("wallet_id") == wallet_id and w.get("enabled", True)]
+                if not target_wallets:
+                    raise ValueError("選択したウォレットが見つからないか、有効になっていません")
+                run_id = "run_" + uuid.uuid4().hex[:12]
+                start_auto_import_job(as_of_date, target_wallets, run_id)
+                return json_response(self, {"run_id": run_id, "total": 1, "status": "running"}, 202)
+            if path == "/api/sources/auto-import":
+                sources = [s for s in load_sources() if s.get("credential_ref")]
+                if not sources:
+                    raise ValueError("認証情報が設定された取引所がありません")
+                results = []
+                for source in sources:
+                    try:
+                        snapshot = build_exchange_snapshot(source)
+                        append_jsonl(PORTFOLIO_SNAPSHOTS_FILE, snapshot)
+                        append_jsonl(RUNS_FILE, {"schema_version": 2, "record_type": "exchange_import_event", "run_id": snapshot["run_id"], "source_id": source["source_id"], "provider": source["provider"], "captured_at": snapshot["captured_at"], "status": "success"})
+                        results.append({"name": source.get("display_name"), "status": "success", "captured_at": snapshot["captured_at"]})
+                    except Exception as exc:
+                        results.append({"name": source.get("display_name"), "status": "error", "error": str(exc)})
+                return json_response(self, {"results": results})
             if path == "/api/wallets":
                 wallets = body.get("wallets", [])
                 for wallet in wallets:
@@ -441,13 +533,26 @@ class Handler(BaseHTTPRequestHandler):
                 sources = [source if x["source_id"] == source["source_id"] else x for x in sources]
                 save_sources(sources)
                 return json_response(self, {"source": source_public(source)})
+            source_match = re.fullmatch(r"/api/sources/([A-Za-z0-9_-]+)", path)
+            if source_match:
+                source_id = source_match.group(1)
+                sources = load_sources()
+                if not any(x["source_id"] == source_id for x in sources):
+                    raise ValueError("接続先が見つかりません")
+                save_sources([x for x in sources if x["source_id"] != source_id])
+                return json_response(self, {"deleted": source_id})
             source_match = re.fullmatch(r"/api/sources/([A-Za-z0-9_-]+)/(test|preview|snapshots)", path)
             if source_match:
                 source = next((x for x in load_sources() if x["source_id"] == source_match.group(1)), None)
                 if not source:
                     raise ValueError("接続先が見つかりません")
-                snapshot = build_exchange_snapshot(source)
                 action = source_match.group(2)
+                snapshot = body.get("snapshot") if action == "snapshots" else None
+                if snapshot:
+                    if snapshot.get("source_id") != source["source_id"]:
+                        raise ValueError("保存対象の接続先が一致しません")
+                else:
+                    snapshot = build_exchange_snapshot(source)
                 if action == "test":
                     return json_response(self, {"ok": True, "message": "接続と残高参照を確認しました", "position_count": len(snapshot["positions"])})
                 if action == "preview":
