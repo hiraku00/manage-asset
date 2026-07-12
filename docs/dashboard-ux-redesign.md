@@ -1,5 +1,7 @@
 # 暗号資産ダッシュボード UX再設計書
 
+> 取引所APIを含む拡張後の画面・データ設計は [exchange-integration-design.md](exchange-integration-design.md) を正とする。本書はウォレット中心のUX原則と既存画面の改善履歴として参照する。
+
 - 文書版: 1.0
 - 作成日: 2026-07-11
 - 対象: 個人利用・ローカルWebアプリ
