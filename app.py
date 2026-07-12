@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import subprocess
@@ -17,12 +18,17 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
-from exchange import CONNECTORS, ExchangeError, supported_providers
+from exchange import CONNECTORS, ExchangeError, supported_providers, usd_jpy_rate
 
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 DATA.mkdir(exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    handlers=[logging.FileHandler(DATA / "app.log", encoding="utf-8"), logging.StreamHandler()],
+)
 WALLETS_FILE = DATA / "wallets.json"
 SNAPSHOTS_FILE = DATA / "snapshots.jsonl"
 RUNS_FILE = DATA / "runs.jsonl"
@@ -145,6 +151,21 @@ def build_exchange_snapshot(source: dict) -> dict:
         raise ValueError("この取引所はまだ実装されていません")
     positions = connector.fetch(load_credentials(source["source_id"]), source["display_name"])
     captured_at = now_iso()
+    totals = snapshot_total(positions)
+    # $1未満かつ価格未取得の微小残高は、総額の精度に影響しないため
+    # 保管場所を「一部未評価」とは扱わない。数量自体はpositionsに保持する。
+    # BinanceのETHWのように、数量は返るが価格ペアがなく、現状1 USD未満の
+    # 既知の微小残高は警告対象外とする。資産自体は明細に残す。
+    ignored_unpriced_dust = {"ETHW"}
+    material_unpriced = [
+        p for p in positions
+        if p.get("usd_value") is None
+        and p.get("symbol") not in ignored_unpriced_dust
+        and Decimal(str(p.get("quantity", "0"))) > 0
+    ]
+    warnings = []
+    if material_unpriced:
+        warnings.append("USD価格を取得できない資産は総額に含めていません")
     return {
         "schema_version": 2,
         "record_type": "portfolio_snapshot",
@@ -160,10 +181,11 @@ def build_exchange_snapshot(source: dict) -> dict:
         "as_of_date": date.today().isoformat(),
         "status": "success",
         "valuation_currency": "USD",
+        "fx_usdjpy": float(usd_jpy_rate()) if usd_jpy_rate() else None,
         "positions": positions,
-        "totals": snapshot_total(positions),
+        "totals": totals,
         "connector": {"name": provider, "version": "1.0.0"},
-        "quality": {"coverage": source.get("account_scope", "spot"), "warnings": ["USD価格を取得できない資産は総額に含めていません"] if any(x.get("usd_value") is None for x in positions) else []},
+        "quality": {"coverage": source.get("account_scope", "spot"), "warnings": warnings},
     }
 
 
@@ -319,6 +341,7 @@ def build_snapshot_record(wallet: dict, html: str, as_of_date: str, run_id: str 
         "address": parsed["address"],
         "as_of_date": as_of_date,
         "captured_at": captured_at,
+        "fx_usdjpy": float(usd_jpy_rate()) if usd_jpy_rate() else None,
         "source": source,
         "input_sha256": hashlib.sha256(html.encode()).hexdigest(),
         **parsed,

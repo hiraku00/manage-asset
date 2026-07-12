@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -19,6 +20,7 @@ from urllib.request import Request, urlopen
 
 
 USER_AGENT = "manage-asset-local/1.0"
+LOG = logging.getLogger("manage_asset.exchange")
 
 
 class ExchangeError(ValueError):
@@ -33,17 +35,26 @@ def decimal(value: Any) -> Decimal:
 
 
 def request_json(url: str, headers: dict[str, str] | None = None, timeout: int = 20) -> Any:
+    # URLには署名を含むため、ログにはホストとパスだけを記録する。
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    safe_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    LOG.info("API request: %s", safe_url)
     request = Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
     try:
         with urlopen(request, timeout=timeout) as response:  # noqa: S310 - hosts are fixed below
-            return json.loads(response.read().decode("utf-8"))
+            body = json.loads(response.read().decode("utf-8"))
+            LOG.info("API response: %s status=%s", safe_url, response.status)
+            return body
     except HTTPError as exc:
+        LOG.error("API HTTP error: %s status=%s", safe_url, exc.code)
         if exc.code in (401, 403):
             raise ExchangeError("認証またはAPI権限が確認できません。読取専用キーを確認してください") from exc
         if exc.code == 429:
             raise ExchangeError("取引所のAPIレート制限に達しました。少し待ってから再試行してください") from exc
         raise ExchangeError(f"取引所APIがHTTP {exc.code} を返しました") from exc
     except (URLError, TimeoutError) as exc:
+        LOG.error("API connection error: %s error=%s", safe_url, exc)
         raise ExchangeError("取引所APIへ接続できませんでした。ネットワークまたは取引所の状態を確認してください") from exc
     except json.JSONDecodeError as exc:
         raise ExchangeError("取引所APIの応答を解析できませんでした") from exc
@@ -69,6 +80,18 @@ def public_price(symbol: str) -> Decimal | None:
         return decimal(data.get("price"))
     except ExchangeError:
         return None
+
+
+def usd_jpy_rate() -> Decimal | None:
+    """Return USD/JPY for snapshot valuation, independent of crypto pairs."""
+    try:
+        data = request_json("https://api.frankfurter.app/latest?from=USD&to=JPY")
+        rate = decimal(data.get("rates", {}).get("JPY"))
+        return rate if rate > 0 else None
+    except ExchangeError:
+        # Fallback for environments where Frankfurter is unavailable.
+        usd_per_jpy = public_price("JPY")
+        return (Decimal("1") / usd_per_jpy) if usd_per_jpy else None
 
 
 @dataclass
@@ -123,6 +146,9 @@ class BinanceConnector(ExchangeConnector):
     label = "Binance Spot"
     host = "https://api.binance.com"
 
+    # Simple Earnの預入証明トークン。価格評価と表示は原資産で行う。
+    EARN_ASSETS = {"LDBNB": "BNB", "LDBTC": "BTC", "LDUSDT": "USDT"}
+
     def fetch(self, credentials: dict[str, str], account_name: str) -> list[dict]:
         api_key, secret = credentials.get("api_key", ""), credentials.get("api_secret", "")
         if not api_key or not secret:
@@ -131,11 +157,21 @@ class BinanceConnector(ExchangeConnector):
         query = urlencode(params)
         signature = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
         data = request_json(f"{self.host}/api/v3/account?{query}&signature={signature}", {"X-MBX-APIKEY": api_key})
-        return [
-            NormalizedPosition(symbol=str(row["asset"]).upper(), quantity=decimal(row.get("free")) + decimal(row.get("locked")), available=decimal(row.get("free")), locked=decimal(row.get("locked"))).as_dict(self.provider, account_name)
-            for row in data.get("balances", [])
-            if decimal(row.get("free")) + decimal(row.get("locked")) != 0
+        balances = data.get("balances", []) if isinstance(data, dict) else []
+        nonzero = [row for row in balances if decimal(row.get("free")) + decimal(row.get("locked")) != 0]
+        LOG.info("Binance account response: balances=%d nonzero=%d", len(balances), len(nonzero))
+        result = [
+            NormalizedPosition(
+                symbol=self.EARN_ASSETS.get(str(row["asset"]).upper(), str(row["asset"]).upper()),
+                quantity=decimal(row.get("free")) + decimal(row.get("locked")),
+                available=decimal(row.get("free")),
+                locked=decimal(row.get("locked")),
+                account_type="simple_earn" if str(row["asset"]).upper() in self.EARN_ASSETS else "spot",
+            ).as_dict(self.provider, account_name)
+            for row in nonzero
         ]
+        LOG.info("Binance normalized positions: count=%d symbols=%s", len(result), ",".join(x["symbol"] for x in result[:20]))
+        return result
 
 
 class BybitConnector(ExchangeConnector):
@@ -143,19 +179,58 @@ class BybitConnector(ExchangeConnector):
     label = "Bybit Unified Trading Account"
     host = "https://api.bybit.com"
 
+    def _signed_get(self, path: str, query: str, api_key: str, secret: str) -> dict:
+        timestamp, recv_window = str(int(time.time() * 1000)), "5000"
+        payload = f"{timestamp}{api_key}{recv_window}{query}"
+        signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        return request_json(
+            f"{self.host}{path}?{query}",
+            {"X-BAPI-API-KEY": api_key, "X-BAPI-TIMESTAMP": timestamp, "X-BAPI-RECV-WINDOW": recv_window, "X-BAPI-SIGN": signature},
+        )
+
+    def _earn_positions(self, api_key: str, secret: str, account_name: str) -> list[dict]:
+        positions = []
+        for category in ("FlexibleSaving", "OnChain"):
+            data = self._signed_get("/v5/earn/position", urlencode({"category": category}), api_key, secret)
+            rows = data.get("result", {}).get("list", []) if isinstance(data, dict) else []
+            LOG.info("Bybit earn positions: category=%s retCode=%s rows=%d", category, data.get("retCode"), len(rows))
+            if data.get("retCode") != 0:
+                continue
+            for row in rows:
+                coin = str(row.get("coin") or row.get("assetSymbol") or "").upper()
+                quantity = decimal(row.get("amount") or row.get("totalAmount") or row.get("effectiveShare") or row.get("principal") or row.get("holdAmount"))
+                if coin and quantity != 0:
+                    positions.append(NormalizedPosition(coin, quantity, quantity, Decimal("0"), account_type="資産運用").as_dict(self.provider, account_name))
+        return positions
+
     def fetch(self, credentials: dict[str, str], account_name: str) -> list[dict]:
         api_key, secret = credentials.get("api_key", ""), credentials.get("api_secret", "")
         if not api_key or not secret:
             raise ExchangeError("BybitのAPI KeyとSecretを登録してください")
-        timestamp, recv_window = str(int(time.time() * 1000)), "5000"
         query = "accountType=UNIFIED"
-        payload = f"{timestamp}{api_key}{recv_window}{query}"
-        signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        data = request_json(
-            f"{self.host}/v5/account/wallet-balance?{query}",
-            {"X-BAPI-API-KEY": api_key, "X-BAPI-TIMESTAMP": timestamp, "X-BAPI-RECV-WINDOW": recv_window, "X-BAPI-SIGN": signature},
-        )
+        data = self._signed_get("/v5/account/wallet-balance", query, api_key, secret)
+        LOG.info("Bybit wallet response: retCode=%s retMsg=%s", data.get("retCode"), data.get("retMsg"))
         if data.get("retCode") != 0:
+            # 現在のAPIキーに「資産 > ウォレット」の権限がある場合、
+            # account/wallet-balanceではなくAsset APIで残高を参照できる。
+            LOG.info("Bybit account wallet denied; trying Asset wallet balances")
+            positions = self._earn_positions(api_key, secret, account_name)
+            for account_type, account_label in (("FUND", "資金調達"), ("UNIFIED", "統合取引"), ("INVESTMENT", "資産運用")):
+                for coin in ("USDT", "USDC", "BTC", "ETH", "BNB", "ETHW"):
+                    asset_query = urlencode({"accountType": account_type, "coin": coin})
+                    asset = self._signed_get("/v5/asset/transfer/query-account-coins-balance", asset_query, api_key, secret)
+                    raw_rows = asset.get("result", {}).get("balance", []) if isinstance(asset, dict) else []
+                    rows = raw_rows if isinstance(raw_rows, list) else ([raw_rows] if isinstance(raw_rows, dict) else [])
+                    LOG.info("Bybit asset balance: account=%s coin=%s retCode=%s rows=%d keys=%s", account_type, coin, asset.get("retCode"), len(rows), ",".join(rows[0].keys()) if rows else "")
+                    if asset.get("retCode") != 0:
+                        continue
+                    for row in rows:
+                        quantity = decimal(row.get("walletBalance") or row.get("transferBalance") or row.get("balance"))
+                        if quantity == 0:
+                            continue
+                        positions.append(NormalizedPosition(coin, quantity, quantity, Decimal("0"), account_type=account_label).as_dict(self.provider, account_name))
+            if positions:
+                return positions
             raise ExchangeError(f"Bybit APIエラー: {data.get('retMsg') or '残高を取得できません'}")
         accounts = data.get("result", {}).get("list", [])
         if not accounts:
