@@ -246,8 +246,8 @@ class ExchangeConnector(Protocol):
 
 ### 7.1 取引所別ルール
 
-- Binance: Phase 1はSpotのみ。`free + locked`。Simple Earn、Funding、Margin、Futuresは別口座。Binance Japanとグローバル版のホストを設定で固定し、任意URLは許可しない。
-- Bybit: Phase 1はUTA。`totalEquity`は照合値で、各通貨と重ねて加算しない。`walletBalance`、`spotBorrow`、`borrowAmount`から資産と負債を分離。Fundingは別取得。
+- Binance: Spotに加えてSimple EarnのLDトークンを原資産へ正規化する。価格評価できない微小残高は明細に保持しつつ総額警告から除外する。
+- Bybit: Unified Walletが権限で取得できない場合はAsset APIへフォールバックし、Funding・Unified・Earn（FlexibleSaving/OnChain）を保管場所別に取得する。
 - bitFlyer: `amount`を総数量、`available`を利用可能数量として保存。
 - Coincheck: 通常、reserved、lending、lend_in_use、lent、debt、tsumitateを別区分へ写像。debtは負債。
 - bitbank: 公式フィールド定義に従い保有、利用可能、注文拘束を正規化。
@@ -636,7 +636,7 @@ Binance、Bybit、Lidoは保管場所であり資産行にならない
 
 - 初期対応: Binance Spot、Bybit UTA、bitFlyer、Coincheck、bitbank、GMOコイン
 - 総資産: 暗号資産と取引所内法定通貨を含む純資産。小計と負債を併記
-- 評価: USD内部基準、USD/JPY表示切替
+- 評価: USD内部基準。取得時点のUSD/JPYレートをスナップショットへ保存し、USD/JPYを併記
 - 更新: 利用者操作時のみ
 - 過去値: 保存済みスナップショットのみ
 - 秘密情報: macOS Keychain
