@@ -5,15 +5,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import subprocess
 import threading
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
+from exchange import CONNECTORS, ExchangeError, supported_providers
 
 
 ROOT = Path(__file__).resolve().parent
@@ -22,6 +26,8 @@ DATA.mkdir(exist_ok=True)
 WALLETS_FILE = DATA / "wallets.json"
 SNAPSHOTS_FILE = DATA / "snapshots.jsonl"
 RUNS_FILE = DATA / "runs.jsonl"
+SOURCES_FILE = DATA / "sources.json"
+PORTFOLIO_SNAPSHOTS_FILE = DATA / "portfolio-snapshots.jsonl"
 STATIC = ROOT / "static"
 LOCK = threading.Lock()
 
@@ -57,6 +63,108 @@ def save_wallets(wallets: list[dict]) -> None:
         json.dumps({"schema_version": 1, "wallets": wallets}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def load_sources() -> list[dict]:
+    if not SOURCES_FILE.exists():
+        return []
+    return json.loads(SOURCES_FILE.read_text(encoding="utf-8")).get("sources", [])
+
+
+def save_sources(sources: list[dict]) -> None:
+    SOURCES_FILE.write_text(
+        json.dumps({"schema_version": 2, "sources": sources}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def keychain_service(source_id: str) -> str:
+    return f"manage-asset/{source_id}"
+
+
+def save_credentials(source_id: str, credentials: dict) -> None:
+    """Store credentials in macOS Keychain, never in the project directory."""
+    clean = {key: str(credentials.get(key, "")).strip() for key in ("api_key", "api_secret", "passphrase")}
+    if not clean["api_key"] or not clean["api_secret"]:
+        raise ValueError("API KeyとAPI Secretを入力してください")
+    try:
+        subprocess.run(
+            ["security", "add-generic-password", "-U", "-a", "local-user", "-s", keychain_service(source_id), "-w", json.dumps(clean)],
+            check=True, capture_output=True, text=True,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError("macOS Keychainを利用できません。このアプリはmacOSで実行してください") from exc
+    except subprocess.CalledProcessError as exc:
+        raise ValueError("macOS KeychainへAPI認証情報を保存できませんでした") from exc
+
+
+def load_credentials(source_id: str) -> dict:
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-a", "local-user", "-s", keychain_service(source_id), "-w"],
+            check=True, capture_output=True, text=True,
+        )
+        return json.loads(result.stdout)
+    except (FileNotFoundError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+        raise ValueError("API認証情報が見つかりません。接続設定から登録してください") from exc
+
+
+def source_public(source: dict) -> dict:
+    output = {key: value for key, value in source.items() if key != "credential_ref"}
+    output["credential_configured"] = bool(source.get("credential_ref"))
+    return output
+
+
+def latest_portfolio_snapshots() -> list[dict]:
+    latest: dict[str, dict] = {}
+    for record in read_jsonl(PORTFOLIO_SNAPSHOTS_FILE):
+        latest[record["source_id"]] = record
+    return list(latest.values())
+
+
+def snapshot_total(positions: list[dict]) -> dict:
+    gross = Decimal("0")
+    liability = Decimal("0")
+    unpriced = 0
+    for position in positions:
+        value = position.get("asset_usd_value", position.get("usd_value"))
+        if value is None:
+            unpriced += 1
+            continue
+        amount = Decimal(str(value))
+        gross += amount
+        if position.get("liability_usd_value") is not None:
+            liability += abs(Decimal(str(position["liability_usd_value"])))
+    return {"gross_asset_usd": str(gross), "liability_usd": str(liability), "net_asset_usd": str(gross - liability), "unpriced_count": unpriced}
+
+
+def build_exchange_snapshot(source: dict) -> dict:
+    provider = source.get("provider")
+    connector = CONNECTORS.get(provider)
+    if not connector:
+        raise ValueError("この取引所はまだ実装されていません")
+    positions = connector.fetch(load_credentials(source["source_id"]), source["display_name"])
+    captured_at = now_iso()
+    return {
+        "schema_version": 2,
+        "record_type": "portfolio_snapshot",
+        "snapshot_id": "snap_" + uuid.uuid4().hex[:16],
+        "run_id": "run_" + uuid.uuid4().hex[:12],
+        "source_id": source["source_id"],
+        "source_type": "exchange",
+        "provider": provider,
+        "account_id": source["source_id"],
+        "account_name": source["display_name"],
+        "captured_at": captured_at,
+        "effective_at": captured_at,
+        "as_of_date": date.today().isoformat(),
+        "status": "success",
+        "valuation_currency": "USD",
+        "positions": positions,
+        "totals": snapshot_total(positions),
+        "connector": {"name": provider, "version": "1.0.0"},
+        "quality": {"coverage": source.get("account_scope", "spot"), "warnings": ["USD価格を取得できない資産は総額に含めていません"] if any(x.get("usd_value") is None for x in positions) else []},
+    }
 
 
 def normalize_address(value: str) -> str:
@@ -191,6 +299,32 @@ def parse_html(html: str) -> dict:
     }
 
 
+def build_snapshot_record(wallet: dict, html: str, as_of_date: str, run_id: str | None = None, source: str = "debank_html_clipboard") -> dict:
+    """Parse DeBank HTML for a wallet and assemble the JSONL snapshot record.
+
+    Shared by the manual clipboard-import endpoint and the automated
+    bulk-fetch endpoint so both paths validate and serialize identically.
+    """
+    parsed = parse_html(html)
+    if normalize_address(wallet["address"]) != parsed["address"]:
+        raise ValueError("HTMLのアドレスと選択したウォレットが一致しません")
+    run_id = run_id or "run_" + uuid.uuid4().hex[:12]
+    captured_at = now_iso()
+    return {
+        "schema_version": 1,
+        "record_type": "wallet_snapshot",
+        "run_id": run_id,
+        "wallet_id": wallet["wallet_id"],
+        "wallet_name": wallet.get("name"),
+        "address": parsed["address"],
+        "as_of_date": as_of_date,
+        "captured_at": captured_at,
+        "source": source,
+        "input_sha256": hashlib.sha256(html.encode()).hexdigest(),
+        **parsed,
+    }
+
+
 def latest_snapshots() -> list[dict]:
     records = read_jsonl(SNAPSHOTS_FILE)
     latest = {}
@@ -217,9 +351,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             wallets = load_wallets()
             snapshots = latest_snapshots()
-            return json_response(self, {"wallets": wallets, "snapshots": snapshots})
+            return json_response(self, {"wallets": wallets, "snapshots": snapshots, "sources": [source_public(x) for x in load_sources()], "exchange_snapshots": latest_portfolio_snapshots()})
         if path == "/api/history":
-            return json_response(self, {"runs": read_jsonl(RUNS_FILE), "snapshots": read_jsonl(SNAPSHOTS_FILE)})
+            return json_response(self, {"runs": read_jsonl(RUNS_FILE), "snapshots": read_jsonl(SNAPSHOTS_FILE), "exchange_snapshots": read_jsonl(PORTFOLIO_SNAPSHOTS_FILE)})
+        if path == "/api/providers":
+            return json_response(self, {"providers": supported_providers()})
+        if path == "/api/sources":
+            return json_response(self, {"sources": [source_public(x) for x in load_sources()]})
         if path == "/":
             target = STATIC / "index.html"
         else:
@@ -250,8 +388,51 @@ class Handler(BaseHTTPRequestHandler):
                     wallet.setdefault("enabled", True)
                 save_wallets(wallets)
                 return json_response(self, {"wallets": wallets})
+            if path == "/api/sources":
+                provider = str(body.get("provider", ""))
+                if provider not in CONNECTORS:
+                    raise ValueError("対応していない取引所です")
+                source = {
+                    "source_id": "src_" + uuid.uuid4().hex[:12],
+                    "source_type": "exchange",
+                    "provider": provider,
+                    "display_name": str(body.get("display_name") or CONNECTORS[provider].label).strip(),
+                    "enabled": True,
+                    "account_scope": "unified" if provider == "bybit" else "spot",
+                    "created_at": now_iso(),
+                }
+                if not source["display_name"]:
+                    raise ValueError("表示名を入力してください")
+                sources = load_sources()
+                sources.append(source)
+                save_sources(sources)
+                return json_response(self, {"source": source_public(source)})
+            source_match = re.fullmatch(r"/api/sources/([A-Za-z0-9_-]+)/credentials", path)
+            if source_match:
+                source = next((x for x in load_sources() if x["source_id"] == source_match.group(1)), None)
+                if not source:
+                    raise ValueError("接続先が見つかりません")
+                save_credentials(source["source_id"], body)
+                source["credential_ref"] = f"keychain:{keychain_service(source['source_id'])}"
+                sources = load_sources()
+                sources = [source if x["source_id"] == source["source_id"] else x for x in sources]
+                save_sources(sources)
+                return json_response(self, {"source": source_public(source)})
+            source_match = re.fullmatch(r"/api/sources/([A-Za-z0-9_-]+)/(test|preview|snapshots)", path)
+            if source_match:
+                source = next((x for x in load_sources() if x["source_id"] == source_match.group(1)), None)
+                if not source:
+                    raise ValueError("接続先が見つかりません")
+                snapshot = build_exchange_snapshot(source)
+                action = source_match.group(2)
+                if action == "test":
+                    return json_response(self, {"ok": True, "message": "接続と残高参照を確認しました", "position_count": len(snapshot["positions"])})
+                if action == "preview":
+                    return json_response(self, {"preview": True, "snapshot": snapshot})
+                append_jsonl(PORTFOLIO_SNAPSHOTS_FILE, snapshot)
+                append_jsonl(RUNS_FILE, {"schema_version": 2, "record_type": "exchange_import_event", "run_id": snapshot["run_id"], "source_id": source["source_id"], "provider": source["provider"], "captured_at": snapshot["captured_at"], "status": "success"})
+                return json_response(self, {"snapshot": snapshot})
             if path == "/api/import":
-                parsed = parse_html(body.get("html", ""))
                 wallet_id = body.get("wallet_id")
                 as_of_date = body.get("as_of_date") or date.today().isoformat()
                 if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", as_of_date):
@@ -260,23 +441,8 @@ class Handler(BaseHTTPRequestHandler):
                 wallet = next((x for x in load_wallets() if x.get("wallet_id") == wallet_id), None)
                 if not wallet:
                     raise ValueError("対象ウォレットが登録されていません")
-                if normalize_address(wallet["address"]) != parsed["address"]:
-                    raise ValueError("HTMLのアドレスと選択したウォレットが一致しません")
-                run_id = body.get("run_id") or "run_" + uuid.uuid4().hex[:12]
-                captured_at = now_iso()
-                record = {
-                    "schema_version": 1,
-                    "record_type": "wallet_snapshot",
-                    "run_id": run_id,
-                    "wallet_id": wallet_id,
-                    "wallet_name": wallet.get("name"),
-                    "address": parsed["address"],
-                    "as_of_date": as_of_date,
-                    "captured_at": captured_at,
-                    "source": "debank_html_clipboard",
-                    "input_sha256": hashlib.sha256(body.get("html", "").encode()).hexdigest(),
-                    **parsed,
-                }
+                record = build_snapshot_record(wallet, body.get("html", ""), as_of_date, run_id=body.get("run_id"))
+                run_id = record["run_id"]
                 # The UI first asks for a parse preview.  Never persist data
                 # until the user explicitly confirms the snapshot.
                 if body.get("preview"):
@@ -289,18 +455,64 @@ class Handler(BaseHTTPRequestHandler):
                     "wallet_id": wallet_id,
                     "wallet_name": wallet.get("name"),
                     "as_of_date": as_of_date,
-                    "captured_at": captured_at,
+                    "captured_at": record["captured_at"],
                     "status": "success",
                 })
                 return json_response(self, {"record": record, "run_id": run_id})
+            if path == "/api/wallets/auto-import":
+                as_of_date = body.get("as_of_date") or date.today().isoformat()
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", as_of_date):
+                    raise ValueError("基準日はYYYY-MM-DDで指定してください")
+                date.fromisoformat(as_of_date)
+                target_wallets = [w for w in load_wallets() if w.get("enabled", True)]
+                if not target_wallets:
+                    raise ValueError("有効なウォレットが登録されていません")
+                from debank_auto import DebankAutoError, fetch_wallets_html
+                run_id = "run_" + uuid.uuid4().hex[:12]
+                try:
+                    fetch_results = fetch_wallets_html(target_wallets)
+                except DebankAutoError as exc:
+                    raise ValueError(str(exc)) from exc
+                results = []
+                for fetched in fetch_results:
+                    if fetched.html is None:
+                        append_jsonl(RUNS_FILE, {
+                            "schema_version": 1, "record_type": "import_event", "run_id": run_id,
+                            "wallet_id": fetched.wallet_id, "wallet_name": fetched.name,
+                            "as_of_date": as_of_date, "captured_at": now_iso(),
+                            "status": "error", "error": fetched.error,
+                        })
+                        results.append({"wallet_id": fetched.wallet_id, "name": fetched.name, "status": "error", "error": fetched.error})
+                        continue
+                    wallet = next((x for x in target_wallets if x["wallet_id"] == fetched.wallet_id), None)
+                    try:
+                        record = build_snapshot_record(wallet, fetched.html, as_of_date, run_id=run_id, source="debank_auto_browser")
+                        append_jsonl(SNAPSHOTS_FILE, record)
+                        append_jsonl(RUNS_FILE, {
+                            "schema_version": 1, "record_type": "import_event", "run_id": run_id,
+                            "wallet_id": fetched.wallet_id, "wallet_name": fetched.name,
+                            "as_of_date": as_of_date, "captured_at": record["captured_at"],
+                            "status": "success",
+                        })
+                        results.append({"wallet_id": fetched.wallet_id, "name": fetched.name, "status": "success", "total_usd": record["total_usd"]})
+                    except Exception as exc:
+                        append_jsonl(RUNS_FILE, {
+                            "schema_version": 1, "record_type": "import_event", "run_id": run_id,
+                            "wallet_id": fetched.wallet_id, "wallet_name": fetched.name,
+                            "as_of_date": as_of_date, "captured_at": now_iso(),
+                            "status": "error", "error": str(exc),
+                        })
+                        results.append({"wallet_id": fetched.wallet_id, "name": fetched.name, "status": "error", "error": str(exc)})
+                return json_response(self, {"run_id": run_id, "results": results})
             raise ValueError("未対応のAPIです")
         except Exception as exc:
             return json_response(self, {"error": str(exc)}, 400)
 
 
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", 8877), Handler)
-    print("Asset tracker: http://127.0.0.1:8877")
+    port = int(os.environ.get("PORT", "8877"))
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    print(f"Asset tracker: http://127.0.0.1:{port}")
     server.serve_forever()
 
 

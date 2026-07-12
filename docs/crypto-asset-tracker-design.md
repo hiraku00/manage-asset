@@ -1,6 +1,8 @@
 # 暗号資産ウォレット管理アプリ MVP 設計書
 
 > ダッシュボードの最新UX設計は [dashboard-ux-redesign.md](dashboard-ux-redesign.md) を正とする。本書6章の旧画面構成より、UX再設計書を優先する。
+>
+> 暗号資産取引所APIを含む統合設計は [exchange-integration-design.md](exchange-integration-design.md) を正とする。取引所対応後は、本書のウォレット限定スコープより統合設計を優先する。
 
 - 文書版: 0.1
 - 作成日: 2026-07-11
