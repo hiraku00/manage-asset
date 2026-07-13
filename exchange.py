@@ -89,9 +89,7 @@ def usd_jpy_rate() -> Decimal | None:
         rate = decimal(data.get("rates", {}).get("JPY"))
         return rate if rate > 0 else None
     except ExchangeError:
-        # Fallback for environments where Frankfurter is unavailable.
-        usd_per_jpy = public_price("JPY")
-        return (Decimal("1") / usd_per_jpy) if usd_per_jpy else None
+        return None
 
 
 @dataclass
@@ -105,7 +103,10 @@ class NormalizedPosition:
     source_value_usd: Decimal | None = None
 
     def as_dict(self, provider: str, account_name: str) -> dict[str, str | bool | None]:
-        price = public_price(self.symbol)
+        # JPY is valued from the common USD/JPY FX rate.  It must not be sent
+        # to Binance as a crypto ticker (USDTJPY is not a supported symbol).
+        fx_rate = usd_jpy_rate() if self.symbol == "JPY" else None
+        price = (Decimal("1") / fx_rate) if fx_rate else public_price(self.symbol)
         asset_value = self.source_value_usd if self.source_value_usd is not None else (self.quantity * price if price is not None else None)
         liability_value = self.borrowed * price if price is not None else None
         value = asset_value - liability_value if asset_value is not None and liability_value is not None else asset_value
