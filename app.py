@@ -414,13 +414,42 @@ def start_auto_import_job(as_of_date: str, target_wallets: list[dict], run_id: s
     threading.Thread(target=worker, name=f"auto-import-{run_id}", daemon=True).start()
 
 
+def start_exchange_import_job(target_sources: list[dict], run_id: str) -> None:
+    job = {"run_id": run_id, "status": "running", "total": len(target_sources), "completed": 0, "success": 0, "failed": 0, "results": [], "started_at": time.monotonic()}
+    with AUTO_IMPORT_LOCK:
+        AUTO_IMPORT_JOBS[run_id] = job
+
+    def update(result: dict) -> None:
+        with AUTO_IMPORT_LOCK:
+            job["results"].append(result)
+            job["completed"] += 1
+            if result["status"] == "success":
+                job["success"] += 1
+            else:
+                job["failed"] += 1
+
+    def worker() -> None:
+        for source in target_sources:
+            try:
+                snapshot = build_exchange_snapshot(source)
+                append_jsonl(PORTFOLIO_SNAPSHOTS_FILE, snapshot)
+                append_jsonl(RUNS_FILE, {"schema_version": 2, "record_type": "exchange_import_event", "run_id": snapshot["run_id"], "source_id": source["source_id"], "provider": source["provider"], "captured_at": snapshot["captured_at"], "status": "success"})
+                update({"source_id": source["source_id"], "name": source.get("display_name"), "status": "success", "captured_at": snapshot["captured_at"]})
+            except Exception as exc:
+                update({"source_id": source["source_id"], "name": source.get("display_name"), "status": "error", "error": str(exc)})
+        with AUTO_IMPORT_LOCK:
+            job["status"] = "completed"
+
+    threading.Thread(target=worker, name=f"exchange-import-{run_id}", daemon=True).start()
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         return
 
     def do_GET(self):
         path = urlparse(self.path).path
-        if path.startswith("/api/wallets/auto-import/"):
+        if path.startswith("/api/wallets/auto-import/") or path.startswith("/api/sources/auto-import/"):
             run_id = path.rsplit("/", 1)[-1]
             with AUTO_IMPORT_LOCK:
                 job = dict(AUTO_IMPORT_JOBS.get(run_id, {}))
@@ -474,6 +503,13 @@ class Handler(BaseHTTPRequestHandler):
                 run_id = "run_" + uuid.uuid4().hex[:12]
                 start_auto_import_job(as_of_date, target_wallets, run_id)
                 return json_response(self, {"run_id": run_id, "total": len(target_wallets), "status": "running"}, 202)
+            if path == "/api/sources/auto-import":
+                target_sources = [source for source in load_sources() if source.get("credential_ref") and source.get("enabled", True)]
+                if not target_sources:
+                    raise ValueError("認証情報が設定された有効な取引所がありません")
+                run_id = "run_" + uuid.uuid4().hex[:12]
+                start_exchange_import_job(target_sources, run_id)
+                return json_response(self, {"run_id": run_id, "total": len(target_sources), "status": "running"}, 202)
             if path.startswith("/api/wallets/auto-import/"):
                 wallet_id = path.rsplit("/", 1)[-1]
                 as_of_date = body.get("as_of_date") or date.today().isoformat()

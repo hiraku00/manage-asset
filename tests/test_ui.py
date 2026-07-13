@@ -103,6 +103,35 @@ def test_update_cards_have_equal_steps_and_no_initial_result_placeholder(server_
         browser.close()
 
 
+def test_exchange_bulk_update_uses_same_progress_cards_and_elapsed_seconds(server_url):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        install_routes(page)
+        poll_count = {"value": 0}
+
+        def exchange_job(route):
+            if route.request.method == "POST":
+                route.fulfill(status=202, content_type="application/json", body=json.dumps({"run_id": "run_exchange_test", "total": 2, "status": "running"}))
+                return
+            poll_count["value"] += 1
+            if poll_count["value"] == 1:
+                payload = {"run_id": "run_exchange_test", "status": "running", "total": 2, "completed": 1, "success": 1, "failed": 0, "elapsed_seconds": 3, "results": []}
+            else:
+                payload = {"run_id": "run_exchange_test", "status": "completed", "total": 2, "completed": 2, "success": 1, "failed": 1, "elapsed_seconds": 5, "results": [{"name": "Binance", "status": "success"}, {"name": "Bybit", "status": "error", "error": "接続エラー"}]}
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+        page.route("**/api/sources/auto-import**", exchange_job)
+        page.goto(server_url)
+        page.get_by_role("button", name="データ更新", exact=True).click()
+        page.get_by_role("button", name="全取引所を更新", exact=True).click()
+        page.wait_for_function("document.querySelector('#exchangeStatus')?.textContent.includes('5秒')")
+        assert page.locator("#exchangeStatus .progress-status").count() == 0
+        assert "成功 1件 / 失敗 1件" in page.locator("#exchangeStatus").inner_text()
+        assert "5秒" in page.locator("#exchangeStatus").inner_text()
+        browser.close()
+
+
 def test_all_views_share_the_same_content_grid_and_location_detail_padding(server_url):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
