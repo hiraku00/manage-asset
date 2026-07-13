@@ -2,10 +2,18 @@ from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
 
-from exchange import BitflyerConnector, BitbankConnector, BybitConnector, BinanceConnector, CoincheckConnector, GmoCoinConnector
+from exchange import BitflyerConnector, BitbankConnector, BybitConnector, BinanceConnector, CoincheckConnector, GmoCoinConnector, NormalizedPosition
 
 
 class ExchangeConnectorTests(TestCase):
+    @patch("exchange.usd_jpy_rate", return_value=Decimal("160"))
+    @patch("exchange.public_price")
+    def test_jpy_uses_usd_jpy_rate_without_binance(self, public_price, _fx):
+        result = NormalizedPosition("JPY", Decimal("160.45"), Decimal("160.45"), Decimal("0")).as_dict("bitbank", "bitbank")
+        self.assertEqual(Decimal(result["price"]), Decimal("0.00625"))
+        self.assertEqual(Decimal(result["usd_value"]), Decimal("1.0028125"))
+        public_price.assert_not_called()
+
     @patch("exchange.public_price", return_value=Decimal("2000"))
     @patch("exchange.request_json")
     def test_binance_combines_free_and_locked(self, request_json, _price):
