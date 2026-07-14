@@ -50,7 +50,7 @@ SAMPLE_STATE = {
 
 def install_routes(page):
     history = {"snapshots": SAMPLE_STATE["snapshots"], "exchange_snapshots": SAMPLE_STATE["exchange_snapshots"], "runs": []}
-    providers = {"providers": [{"provider": "binance", "label": "Binance Spot"}]}
+    providers = {"providers": [{"provider": "binance", "label": "Binance"}]}
     page.route("**/api/state", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(SAMPLE_STATE)))
     page.route("**/api/history", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(history)))
     page.route("**/api/providers", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(providers)))
@@ -84,6 +84,19 @@ def test_asset_table_contains_one_unit_price_column_and_defi_assets(server_url):
         browser.close()
 
 
+def test_currency_display_formats_usd_with_cents_and_jpy_without_decimals(server_url):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        install_routes(page)
+        page.goto(server_url)
+        page.wait_for_selector("#assets tbody tr")
+        assert page.locator("#total").inner_text() == "$229,203.59"
+        assert page.locator("#totalJpy").inner_text() == "円換算 ¥37,101,185"
+        assert "¥37,101,185." not in page.locator("body").inner_text()
+        browser.close()
+
+
 def test_update_cards_have_equal_steps_and_no_initial_result_placeholder(server_url):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
@@ -100,6 +113,21 @@ def test_update_cards_have_equal_steps_and_no_initial_result_placeholder(server_
         assert len(set(colors)) == 1
         assert not page.locator("#importStatus").is_visible()
         assert "更新結果がここに表示されます" not in page.locator("body").inner_text()
+        browser.close()
+
+
+def test_exchange_provider_labels_are_user_facing_names(server_url):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        install_routes(page)
+        page.goto(server_url)
+        page.get_by_role("button", name="設定", exact=True).click()
+        page.wait_for_selector("#sourceList tbody tr")
+        assert page.locator("#provider option").first.inner_text() == "Binance"
+        assert page.locator("#sourceList tbody tr").first.locator("td").nth(1).inner_text() == "Binance"
+        page.get_by_role("button", name="データ更新", exact=True).click()
+        assert page.locator("#updateSource option").first.inner_text() == "Binance (Binance)"
         browser.close()
 
 

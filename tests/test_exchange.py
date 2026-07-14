@@ -4,10 +4,15 @@ from unittest import TestCase
 from unittest.mock import patch
 from urllib.error import URLError
 
-from exchange import BitflyerConnector, BitbankConnector, BybitConnector, BinanceConnector, CoincheckConnector, ExchangeError, GmoCoinConnector, NormalizedPosition, request_json
+from exchange import BitflyerConnector, BitbankConnector, BybitConnector, BinanceConnector, CoincheckConnector, ExchangeError, GmoCoinConnector, NormalizedPosition, request_json, supported_providers
 
 
 class ExchangeConnectorTests(TestCase):
+    def test_supported_provider_labels_use_exchange_names(self):
+        labels = {row["provider"]: row["label"] for row in supported_providers()}
+        self.assertEqual(labels["binance"], "Binance")
+        self.assertEqual(labels["bybit"], "Bybit")
+
     @patch("exchange.urlopen")
     def test_request_json_reports_certificate_verification_errors(self, urlopen):
         urlopen.side_effect = URLError(ssl.SSLCertVerificationError("certificate verify failed"))
@@ -27,7 +32,7 @@ class ExchangeConnectorTests(TestCase):
     @patch("exchange.request_json")
     def test_binance_combines_free_and_locked(self, request_json, _price):
         request_json.return_value = {"balances": [{"asset": "ETH", "free": "1.25", "locked": "0.75"}, {"asset": "BTC", "free": "0", "locked": "0"}]}
-        result = BinanceConnector().fetch({"api_key": "key", "api_secret": "secret"}, "Binance Main")
+        result = BinanceConnector().fetch({"api_key": "key", "api_secret": "secret"}, "Binance")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["net_quantity"], "2.00")
         self.assertEqual(result[0]["available_quantity"], "1.25")

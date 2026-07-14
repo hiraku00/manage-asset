@@ -161,7 +161,7 @@ class ExchangeConnector:
 
 class BinanceConnector(ExchangeConnector):
     provider = "binance"
-    label = "Binance Spot"
+    label = "Binance"
     host = "https://api.binance.com"
 
     # Simple Earnの預入証明トークン。価格評価と表示は原資産で行う。
@@ -194,7 +194,7 @@ class BinanceConnector(ExchangeConnector):
 
 class BybitConnector(ExchangeConnector):
     provider = "bybit"
-    label = "Bybit Unified Trading Account"
+    label = "Bybit"
     host = "https://api.bybit.com"
 
     def _signed_get(self, path: str, query: str, api_key: str, secret: str) -> dict:
