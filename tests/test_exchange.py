@@ -1,11 +1,20 @@
+import ssl
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
+from urllib.error import URLError
 
-from exchange import BitflyerConnector, BitbankConnector, BybitConnector, BinanceConnector, CoincheckConnector, GmoCoinConnector, NormalizedPosition
+from exchange import BitflyerConnector, BitbankConnector, BybitConnector, BinanceConnector, CoincheckConnector, ExchangeError, GmoCoinConnector, NormalizedPosition, request_json
 
 
 class ExchangeConnectorTests(TestCase):
+    @patch("exchange.urlopen")
+    def test_request_json_reports_certificate_verification_errors(self, urlopen):
+        urlopen.side_effect = URLError(ssl.SSLCertVerificationError("certificate verify failed"))
+
+        with self.assertRaisesRegex(ExchangeError, "HTTPS証明書を検証できませんでした"):
+            request_json("https://api.example.test/private?signature=secret")
+
     @patch("exchange.usd_jpy_rate", return_value=Decimal("160"))
     @patch("exchange.public_price")
     def test_jpy_uses_usd_jpy_rate_without_binance(self, public_price, _fx):

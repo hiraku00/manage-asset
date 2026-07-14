@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import logging
+import ssl
 import time
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -17,6 +18,11 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+try:
+    import certifi
+except ImportError:  # pragma: no cover - optional runtime dependency
+    certifi = None
 
 
 USER_AGENT = "manage-asset-local/1.0"
@@ -34,6 +40,15 @@ def decimal(value: Any) -> Decimal:
         raise ExchangeError("取引所から不正な数値を受信しました") from exc
 
 
+def tls_context() -> ssl.SSLContext | None:
+    return ssl.create_default_context(cafile=certifi.where()) if certifi else None
+
+
+def is_certificate_error(exc: BaseException) -> bool:
+    reason = getattr(exc, "reason", None)
+    return isinstance(reason, ssl.SSLCertVerificationError) or isinstance(exc, ssl.SSLCertVerificationError)
+
+
 def request_json(url: str, headers: dict[str, str] | None = None, timeout: int = 20) -> Any:
     # URLには署名を含むため、ログにはホストとパスだけを記録する。
     from urllib.parse import urlsplit
@@ -42,7 +57,7 @@ def request_json(url: str, headers: dict[str, str] | None = None, timeout: int =
     LOG.info("API request: %s", safe_url)
     request = Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
     try:
-        with urlopen(request, timeout=timeout) as response:  # noqa: S310 - hosts are fixed below
+        with urlopen(request, timeout=timeout, context=tls_context()) as response:  # noqa: S310 - hosts are fixed below
             body = json.loads(response.read().decode("utf-8"))
             LOG.info("API response: %s status=%s", safe_url, response.status)
             return body
@@ -55,6 +70,8 @@ def request_json(url: str, headers: dict[str, str] | None = None, timeout: int =
         raise ExchangeError(f"取引所APIがHTTP {exc.code} を返しました") from exc
     except (URLError, TimeoutError) as exc:
         LOG.error("API connection error: %s error=%s", safe_url, exc)
+        if is_certificate_error(exc):
+            raise ExchangeError("HTTPS証明書を検証できませんでした。PythonのCA証明書設定、VPN/プロキシの証明書、またはSSL_CERT_FILEを確認してください") from exc
         raise ExchangeError("取引所APIへ接続できませんでした。ネットワークまたは取引所の状態を確認してください") from exc
     except json.JSONDecodeError as exc:
         raise ExchangeError("取引所APIの応答を解析できませんでした") from exc
