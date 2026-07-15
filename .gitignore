@@ -6,7 +6,8 @@ venv/
 
 # Local runtime data. These files can contain wallet addresses,
 # balances, snapshot history, and copied DeBank HTML.
-data/
+data/*
+!data/usd-jpy-rates.json
 *.jsonl
 sample-*.html
 *-debank.html

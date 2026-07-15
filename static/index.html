@@ -13,6 +13,7 @@
     <nav aria-label="メインナビゲーション">
       <button class="nav active" data-view="overview" aria-current="page">資産概要</button>
       <button class="nav" data-view="locations" aria-current="false">保管場所</button>
+      <button class="nav" data-view="currency" aria-current="false">通貨推移</button>
       <button class="nav" data-view="update" aria-current="false">データ更新</button>
       <button class="nav" data-view="settings" aria-current="false">設定</button>
     </nav>
@@ -22,16 +23,16 @@
 
 <main class="shell">
   <section id="overview" class="view active">
-    <div class="page-head"><div><h1>資産概要</h1><p class="note">ウォレットと取引所の最新データを合算しています。</p></div></div>
     <section class="card hero">
       <div class="hero-grid">
-        <div><div class="label">総資産（USD）</div><div class="total" id="total">—</div><div id="totalJpy" class="label">円換算 —</div><div id="change" class="label">比較データなし</div></div>
+        <div><div class="label">総資産（USD）</div><div class="total" id="total">—</div><div id="totalJpy" class="label">円換算 —</div></div>
+        <div class="metric comparison-metric"><div class="label">前回保存比</div><strong id="change" class="comparison-values">比較データなし</strong></div>
         <div class="metric"><div class="label">換算レート</div><strong id="fxNote">USD/JPY —</strong></div>
         <div class="metric"><div class="label">最終更新</div><strong id="freshness">—</strong></div>
       </div>
     </section>
     <section class="grid2">
-      <section class="card chart"><div class="section-head"><h2>資産推移</h2></div><div id="trend"></div></section>
+      <section class="card chart"><div class="section-head"><h2>資産推移</h2><label class="chart-period">グラフ期間<select id="assetPeriod"><option value="7" selected>7d</option><option value="30">30d</option><option value="90">90d</option><option value="all">All</option></select></label></div><div id="trend"></div></section>
       <section class="card chart"><div class="section-head"><h2>資産配分</h2><span class="note">上位5資産 + その他</span></div><div id="allocation"></div><div id="reconciliation"></div></section>
     </section>
     <section class="card section"><div class="section-head"><div><h2>保有資産</h2><p class="note">資産ごとの数量、単価、評価額、主な保管場所を表示します。</p></div><label class="small dust-control"><input id="dust" type="checkbox"> 1 USD未満を表示</label></div><div id="assets"></div></section>
@@ -40,6 +41,13 @@
   <section id="locations" class="view">
     <div class="page-head"><div><h1>保管場所</h1><p class="note">ウォレット、取引所、DeFiの評価額と取得状態を確認します。</p></div></div>
     <section class="card"><div id="locationList"></div></section>
+  </section>
+
+  <section id="currency" class="view">
+    <div class="page-head"><div><h1>通貨推移</h1><p class="note">通貨ごとの残高と、前回記録日からの日次増加量を表示します。</p></div></div>
+    <section class="card currency-controls"><label>表示する通貨<select id="currencySelect"></select></label></section>
+    <section class="grid2 currency-summary"><section class="card"><div class="label">現在残高</div><div class="total currency-total" id="currencyTotal">—</div><div class="fiat-lines" id="currencyTotalValue"><span>USD —</span><span>JPY —</span></div></section><section class="card"><div class="label">直近の日次増加</div><div class="total currency-total" id="currencyDelta">—</div><div class="fiat-lines" id="currencyDeltaValue"><span>USD —</span><span>JPY —</span></div></section></section>
+    <section class="card section"><div class="section-head"><div><h2 id="currencyChartTitle">日次増加量</h2><p class="note">Rewardのみを表示。Transfer/Staking入金は含めません。</p></div><label>グラフ期間<select id="currencyPeriod"><option value="7" selected>7d</option><option value="30">30d</option><option value="90">90d</option><option value="all">All</option></select></label></div><div id="currencyChart"></div><div id="currencyTable"></div></section>
   </section>
 
   <section id="update" class="view">

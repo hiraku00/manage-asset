@@ -34,6 +34,8 @@ logging.basicConfig(
 WALLETS_FILE = DATA / "wallets.json"
 SNAPSHOTS_FILE = DATA / "snapshots.jsonl"
 RUNS_FILE = DATA / "runs.jsonl"
+LIDO_REWARDS_FILE = DATA / "lido-rewards.jsonl"
+USD_JPY_RATES_FILE = DATA / "usd-jpy-rates.json"
 SOURCES_FILE = DATA / "sources.json"
 PORTFOLIO_SNAPSHOTS_FILE = DATA / "portfolio-snapshots.jsonl"
 STATIC = ROOT / "static"
@@ -464,6 +466,12 @@ class Handler(BaseHTTPRequestHandler):
             return json_response(self, {"wallets": wallets, "snapshots": snapshots, "sources": [source_public(x) for x in load_sources()], "exchange_snapshots": latest_portfolio_snapshots()})
         if path == "/api/history":
             return json_response(self, {"runs": read_jsonl(RUNS_FILE), "snapshots": read_jsonl(SNAPSHOTS_FILE), "exchange_snapshots": read_jsonl(PORTFOLIO_SNAPSHOTS_FILE)})
+        if path == "/api/lido-rewards":
+            rows = read_jsonl(LIDO_REWARDS_FILE)
+            return json_response(self, {"symbol": "stETH", "rows": rows})
+        if path == "/api/usd-jpy-rates":
+            payload = json.loads(USD_JPY_RATES_FILE.read_text(encoding="utf-8")) if USD_JPY_RATES_FILE.exists() else []
+            return json_response(self, {"rows": payload})
         if path == "/api/providers":
             return json_response(self, {"providers": supported_providers()})
         if path == "/api/sources":
