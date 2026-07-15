@@ -48,8 +48,8 @@ SAMPLE_STATE = {
 }
 
 
-def install_routes(page):
-    history = {"snapshots": SAMPLE_STATE["snapshots"], "exchange_snapshots": SAMPLE_STATE["exchange_snapshots"], "runs": []}
+def install_routes(page, history=None):
+    history = history or {"snapshots": SAMPLE_STATE["snapshots"], "exchange_snapshots": SAMPLE_STATE["exchange_snapshots"], "runs": []}
     providers = {"providers": [{"provider": "binance", "label": "Binance"}]}
     page.route("**/api/state", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(SAMPLE_STATE)))
     page.route("**/api/history", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(history)))
@@ -93,7 +93,36 @@ def test_currency_display_formats_usd_with_cents_and_jpy_without_decimals(server
         page.wait_for_selector("#assets tbody tr")
         assert page.locator("#total").inner_text() == "$229,203.59"
         assert page.locator("#totalJpy").inner_text() == "円換算 ¥37,101,185"
+        assert page.locator("#fxAt").count() == 0
+        assert "取得日時：" not in page.locator(".hero").inner_text()
         assert "¥37,101,185." not in page.locator("body").inner_text()
+        browser.close()
+
+
+def test_change_display_includes_usd_and_jpy(server_url):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        history = {
+            "snapshots": [
+                {"wallet_id": "wallet_lido", "captured_at": "2026-07-11T10:00:00Z", "as_of_date": "2026-07-11", "total_usd": "200000.00"},
+                *SAMPLE_STATE["snapshots"],
+            ],
+            "exchange_snapshots": [
+                {"source_id": "src_binance", "captured_at": "2026-07-11T11:00:00Z", "as_of_date": "2026-07-11", "totals": {"net_asset_usd": "10000.00"}},
+                *SAMPLE_STATE["exchange_snapshots"],
+            ],
+            "runs": [],
+        }
+        install_routes(page, history=history)
+        page.goto(server_url)
+        page.wait_for_selector("#assets tbody tr")
+        assert page.locator("#change").inner_text() == "+$19,203.59 / +¥3,108,485（9.14%） 前回保存比"
+        assert page.locator("#trend .chartlabel-sub").first.text_content().startswith("(¥")
+        assert page.locator("#trend .axis").first.get_attribute("x1") == "76"
+        assert page.locator("#trend .axis").first.get_attribute("x2") == "714"
+        assert page.locator("#trend .chartlabel").last.text_content() == "7/12"
+        assert page.locator("#trend .chartlabel").last.get_attribute("text-anchor") == "end"
         browser.close()
 
 
