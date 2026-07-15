@@ -54,7 +54,7 @@ class WalletFetchResult:
     error: str | None
 
 
-def _wait_for_data(page, timeout_ms: int = 25000) -> None:
+def _wait_for_data(page, timeout_ms: int = 25000, hydration_wait_ms: int = 0) -> None:
     """Wait until the page has rendered its header total and (best effort)
     settled its background token/DeFi requests."""
     page.wait_for_load_state("domcontentloaded")
@@ -70,10 +70,11 @@ def _wait_for_data(page, timeout_ms: int = 25000) -> None:
         # DeBank keeps some long-lived connections open; networkidle timing
         # out is normal and not itself a failure.
         pass
-    # Chain/token/DeFi panels continue to hydrate asynchronously for a bit
-    # after the header renders and network settles. A short fixed pause
-    # avoids capturing a partially-rendered table.
-    page.wait_for_timeout(2500)
+    # networkidle has already allowed the token/DeFi requests to settle. An
+    # optional extra delay remains available for troubleshooting page changes,
+    # but normal imports do not pay a fixed per-wallet penalty.
+    if hydration_wait_ms > 0:
+        page.wait_for_timeout(hydration_wait_ms)
 
 
 def fetch_wallets_html(
@@ -81,6 +82,7 @@ def fetch_wallets_html(
     headless: bool | None = None,
     min_pause_s: float = 0.0,
     max_pause_s: float = 0.0,
+    hydration_wait_ms: int = 0,
     on_result=None,
 ) -> list[WalletFetchResult]:
     """Sequentially open each wallet's DeBank profile in its own tab, capture
@@ -119,7 +121,7 @@ def fetch_wallets_html(
                         wait_until="domcontentloaded",
                         timeout=30000,
                     )
-                    _wait_for_data(page)
+                    _wait_for_data(page, hydration_wait_ms=hydration_wait_ms)
                     html = page.content()
                     result = WalletFetchResult(wallet["wallet_id"], name, address, html, None)
                     results.append(result)
