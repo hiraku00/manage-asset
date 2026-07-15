@@ -170,6 +170,7 @@ def build_exchange_snapshot(source: dict) -> dict:
     warnings = []
     if material_unpriced:
         warnings.append("USD価格を取得できない資産は総額に含めていません")
+    fx_usdjpy = usd_jpy_rate()
     return {
         "schema_version": 2,
         "record_type": "portfolio_snapshot",
@@ -185,7 +186,7 @@ def build_exchange_snapshot(source: dict) -> dict:
         "as_of_date": date.today().isoformat(),
         "status": "success",
         "valuation_currency": "USD",
-        "fx_usdjpy": float(usd_jpy_rate()) if usd_jpy_rate() else None,
+        "fx_usdjpy": float(fx_usdjpy) if fx_usdjpy is not None else None,
         "positions": positions,
         "totals": totals,
         "connector": {"name": provider, "version": "1.0.0"},
@@ -325,7 +326,14 @@ def parse_html(html: str) -> dict:
     }
 
 
-def build_snapshot_record(wallet: dict, html: str, as_of_date: str, run_id: str | None = None, source: str = "debank_html_clipboard") -> dict:
+def build_snapshot_record(
+    wallet: dict,
+    html: str,
+    as_of_date: str,
+    run_id: str | None = None,
+    source: str = "debank_html_clipboard",
+    fx_usdjpy: Decimal | None = None,
+) -> dict:
     """Parse DeBank HTML for a wallet and assemble the JSONL snapshot record.
 
     Shared by the manual clipboard-import endpoint and the automated
@@ -345,7 +353,7 @@ def build_snapshot_record(wallet: dict, html: str, as_of_date: str, run_id: str 
         "address": parsed["address"],
         "as_of_date": as_of_date,
         "captured_at": captured_at,
-        "fx_usdjpy": float(usd_jpy_rate()) if usd_jpy_rate() else None,
+        "fx_usdjpy": float(fx_usdjpy) if fx_usdjpy is not None else None,
         "source": source,
         "input_sha256": hashlib.sha256(html.encode()).hexdigest(),
         **parsed,
@@ -391,6 +399,10 @@ def start_auto_import_job(as_of_date: str, target_wallets: list[dict], run_id: s
         try:
             from debank_auto import DebankAutoError, fetch_wallets_html
 
+            # The FX rate is common to every snapshot in this run. Fetch it
+            # once instead of making two identical API calls per wallet.
+            run_fx_usdjpy = usd_jpy_rate()
+
             def handle_fetch(fetched) -> None:
                 if fetched.html is None:
                     append_jsonl(RUNS_FILE, {"schema_version": 1, "record_type": "import_event", "run_id": run_id, "wallet_id": fetched.wallet_id, "wallet_name": fetched.name, "as_of_date": as_of_date, "captured_at": now_iso(), "status": "error", "error": fetched.error})
@@ -398,7 +410,14 @@ def start_auto_import_job(as_of_date: str, target_wallets: list[dict], run_id: s
                     return
                 wallet = next(x for x in target_wallets if x["wallet_id"] == fetched.wallet_id)
                 try:
-                    record = build_snapshot_record(wallet, fetched.html, as_of_date, run_id=run_id, source="debank_auto_browser")
+                    record = build_snapshot_record(
+                        wallet,
+                        fetched.html,
+                        as_of_date,
+                        run_id=run_id,
+                        source="debank_auto_browser",
+                        fx_usdjpy=run_fx_usdjpy,
+                    )
                     append_jsonl(SNAPSHOTS_FILE, record)
                     append_jsonl(RUNS_FILE, {"schema_version": 1, "record_type": "import_event", "run_id": run_id, "wallet_id": fetched.wallet_id, "wallet_name": fetched.name, "as_of_date": as_of_date, "captured_at": record["captured_at"], "status": "success"})
                     update({"wallet_id": fetched.wallet_id, "name": fetched.name, "status": "success", "total_usd": record["total_usd"]})
@@ -617,7 +636,13 @@ class Handler(BaseHTTPRequestHandler):
                 wallet = next((x for x in load_wallets() if x.get("wallet_id") == wallet_id), None)
                 if not wallet:
                     raise ValueError("対象ウォレットが登録されていません")
-                record = build_snapshot_record(wallet, body.get("html", ""), as_of_date, run_id=body.get("run_id"))
+                record = build_snapshot_record(
+                    wallet,
+                    body.get("html", ""),
+                    as_of_date,
+                    run_id=body.get("run_id"),
+                    fx_usdjpy=usd_jpy_rate(),
+                )
                 run_id = record["run_id"]
                 # The UI first asks for a parse preview.  Never persist data
                 # until the user explicitly confirms the snapshot.
@@ -650,6 +675,7 @@ class Handler(BaseHTTPRequestHandler):
                 except DebankAutoError as exc:
                     raise ValueError(str(exc)) from exc
                 results = []
+                run_fx_usdjpy = usd_jpy_rate()
                 for fetched in fetch_results:
                     if fetched.html is None:
                         append_jsonl(RUNS_FILE, {
@@ -662,7 +688,14 @@ class Handler(BaseHTTPRequestHandler):
                         continue
                     wallet = next((x for x in target_wallets if x["wallet_id"] == fetched.wallet_id), None)
                     try:
-                        record = build_snapshot_record(wallet, fetched.html, as_of_date, run_id=run_id, source="debank_auto_browser")
+                        record = build_snapshot_record(
+                            wallet,
+                            fetched.html,
+                            as_of_date,
+                            run_id=run_id,
+                            source="debank_auto_browser",
+                            fx_usdjpy=run_fx_usdjpy,
+                        )
                         append_jsonl(SNAPSHOTS_FILE, record)
                         append_jsonl(RUNS_FILE, {
                             "schema_version": 1, "record_type": "import_event", "run_id": run_id,

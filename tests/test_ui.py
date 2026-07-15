@@ -322,6 +322,40 @@ def test_exchange_bulk_update_uses_same_progress_cards_and_elapsed_seconds(serve
         browser.close()
 
 
+def test_single_wallet_update_uses_shared_job_polling(server_url):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        install_routes(page)
+        page_errors = []
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+
+        def wallet_job(route):
+            if route.request.method == "POST":
+                payload = {"run_id": "run_wallet_test", "total": 1, "status": "running"}
+                route.fulfill(status=202, content_type="application/json", body=json.dumps(payload))
+                return
+            payload = {
+                "run_id": "run_wallet_test",
+                "status": "completed",
+                "total": 1,
+                "completed": 1,
+                "success": 1,
+                "failed": 0,
+                "elapsed_seconds": 2,
+                "results": [{"name": "Lido2", "status": "success"}],
+            }
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+        page.route("**/api/wallets/auto-import/**", wallet_job)
+        page.goto(server_url)
+        page.get_by_role("button", name="データ更新", exact=True).click()
+        page.locator("#updateWallet").click()
+        page.wait_for_function("document.querySelector('#importStatus')?.textContent.includes('成功 1件')")
+        assert page_errors == []
+        browser.close()
+
+
 def test_all_views_share_the_same_content_grid_and_location_detail_padding(server_url):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
