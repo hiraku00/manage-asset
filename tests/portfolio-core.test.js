@@ -58,6 +58,19 @@ test('history uses newest record for each source and date',()=>{
   assert.deepEqual(Core.historyPoints(history),[{date:'2026-07-11',value:25}]);
 });
 
+test('previous comparison uses the first capture on the nearest earlier date',()=>{
+  const history={snapshots:[
+    {wallet_id:'w1',as_of_date:'2026-07-10',captured_at:'2026-07-10T09:00:00Z',total_usd:80},
+    {wallet_id:'w1',as_of_date:'2026-07-12',captured_at:'2026-07-12T18:00:00Z',total_usd:120},
+    {wallet_id:'w1',as_of_date:'2026-07-12',captured_at:'2026-07-12T08:00:00Z',total_usd:100},
+  ],exchange_snapshots:[
+    {source_id:'s1',as_of_date:'2026-07-12',captured_at:'2026-07-12T07:00:00Z',totals:{net_asset_usd:25}},
+    {source_id:'s1',as_of_date:'2026-07-12',captured_at:'2026-07-12T19:00:00Z',totals:{net_asset_usd:30}},
+  ]};
+  assert.deepEqual(Core.previousOpeningPoint(history,'2026-07-13'),{date:'2026-07-12',value:125});
+  assert.deepEqual(Core.previousOpeningPoint(history,'2026-07-12'),{date:'2026-07-10',value:80});
+});
+
 test('currency history aggregates daily balances and differences',()=>{
   const history={snapshots:[
     {wallet_id:'w1',as_of_date:'2026-07-11',captured_at:'2026-07-11T01:00:00Z',protocols:[{panels:[{display_text:'USD Value stETH ETH 1.00 ETH Withdraw $3'}]}]},

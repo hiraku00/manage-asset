@@ -115,6 +115,7 @@ def test_asset_table_contains_one_unit_price_column_and_defi_assets(server_url):
         assert page.locator("#assets thead th", has_text="単価").count() == 1
         assert page.locator("#assets tbody").get_by_text("stETH", exact=True).count() == 1
         assert page.locator("#assets tbody tr").first.locator("td").count() == 6
+        assert page.locator("#assets tbody tr").first.locator("td").nth(1).inner_text() == "119.7089"
         browser.close()
 
 
@@ -163,6 +164,7 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         page.goto(server_url)
         page.get_by_role("button", name="通貨推移", exact=True).click()
         page.wait_for_selector("#currencyTable tbody tr")
+        assert page.locator("#currencySelect option").first.inner_text() == "stETH（119.7089）"
         assert page.locator("#currencyTotal").inner_text() == "119.7305 stETH"
         assert page.locator("#currencyDelta").inner_text() == "+0.00730 stETH"
         assert page.locator("#currencyTotalValue").bounding_box()["x"] > page.locator("#currencyTotal").bounding_box()["x"]
@@ -171,10 +173,15 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         assert rows.count() == 5
         assert rows.nth(0).locator("td").nth(0).inner_text() == "2026-07-15"
         assert rows.nth(0).locator("td").nth(4).inner_text() == "0.00730"
+        assert rows.nth(0).locator("td").nth(1).inner_text().startswith("$1,")
+        assert "." not in rows.nth(0).locator("td").nth(1).inner_text().splitlines()[1]
+        assert rows.nth(0).locator("td").nth(2).inner_text() == "162.22"
         assert rows.nth(0).locator("td").nth(3).inner_text() == "2.23%"
         assert rows.nth(3).locator("td").nth(0).inner_text() == "2026-07-12"
         assert rows.nth(3).locator("td").nth(4).inner_text() == "0.00005"
         assert rows.nth(0).locator("td").nth(6).inner_text() == "119.7305"
+        assert page.evaluate("DisplayConfig.fiatDecimals") == {"USD": 2, "JPY": 0}
+        assert page.evaluate("DisplayConfig.tokenDecimals.defaults") == {"balance": 2, "change": 4}
         assert page.locator("#currencyChart .bar-axis-label").count() == 5
         axis_text = page.locator("#currencyChart .bar-axis-label").first.text_content()
         assert axis_text.startswith("$")
@@ -184,8 +191,39 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         assert "0.14" in page.locator("#currencyChart .reward-area").evaluate("el => getComputedStyle(el).fill")
         assert page.locator("#currencyTable .currency-page.active").inner_text() == "1"
         before = rows.all_inner_texts()
+        header_positions = page.locator("#currencyTable thead th").evaluate_all("els => els.map(el => Math.round(el.getBoundingClientRect().left))")
         page.locator("#currencyPeriod").select_option("30")
         assert page.locator("#currencyTable tbody tr").all_inner_texts() == before
+        page.locator("#currencyView").select_option("balance")
+        assert page.locator("#currencyDeltaLabel").inner_text() == "期間増加分（30日）"
+        assert page.locator("#currencyDelta").inner_text() == "+0.02165 stETH"
+        assert page.locator("#currencyChartTitle").inner_text() == "stETHの資産推移"
+        assert page.locator("#currencyChart .currency-balance-chart").count() == 1
+        assert page.locator("#currencyTotal").inner_text() == "119.7305 stETH"
+        axis_text = page.locator("#currencyChart .bar-axis-label").first.text_content()
+        assert "$" in axis_text and "¥" in axis_text
+        assert page.locator("#currencyTable thead th").nth(4).inner_text() == "Change\n(stETH)"
+        assert page.locator("#currencyTable thead th").evaluate_all("els => els.map(el => Math.round(el.getBoundingClientRect().left))") == header_positions
+        assert page.locator("#currencyTable tbody tr").first.locator("td").nth(1).inner_text().startswith("$1,")
+        assert page.locator("#currencyTable tbody tr").first.locator("td").nth(3).inner_text() == "—"
+        assert page.locator("#currencyTable tbody tr").first.locator("td").nth(4).inner_text() == "—"
+        assert page.locator("#currencyTable tbody tr").first.locator("td").nth(5).inner_text().splitlines()[0] == "+$11,487.99"
+        assert page.locator("#currencyTable tbody tr").nth(1).locator("td").nth(5).inner_text().splitlines()[0] == "-$3,291.28"
+        assert page.locator("#currencyTable thead th").nth(5).evaluate("el => getComputedStyle(el).textAlign") == "right"
+        assert page.locator("#currencyTable thead th").nth(7).evaluate("el => getComputedStyle(el).textAlign") == "right"
+        assert page.locator("#currencyTable .change-positive").first.evaluate("el => getComputedStyle(el).color") == "rgb(0, 23, 193)"
+        assert page.locator("#currencyTable .change-negative").first.evaluate("el => getComputedStyle(el).color") == "rgb(176, 0, 32)"
+        header_widths = page.locator("#currencyTable thead th").evaluate_all("els => els.map(el => el.getBoundingClientRect().width)")
+        assert header_widths[0] < header_widths[1]
+        assert header_widths[5] > header_widths[4]
+        assert header_widths[7] > header_widths[6]
+        assert abs(header_widths[5] - header_widths[7]) < 20
+        change_token_box = page.locator("#currencyTable tbody tr").first.locator("td").nth(4).bounding_box()
+        change_fiat_box = page.locator("#currencyTable tbody tr").first.locator("td").nth(5).bounding_box()
+        assert change_fiat_box["x"] - (change_token_box["x"] + change_token_box["width"]) <= 1
+        page.locator("#currencyView").select_option("change")
+        assert page.locator("#currencyDeltaLabel").inner_text() == "前日からの増加分"
+        assert page.locator("#currencyDelta").inner_text() == "+0.00730 stETH"
         browser.close()
 
 
@@ -193,7 +231,7 @@ def test_currency_pagination_uses_numbered_pages_and_ellipses(server_url):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
-        install_routes(page)
+        install_routes(page, history={"snapshots": [], "exchange_snapshots": [], "runs": []})
         last_date = date(2026, 7, 11)
         rewards = []
         for index in range(825):
@@ -218,6 +256,12 @@ def test_currency_pagination_uses_numbered_pages_and_ellipses(server_url):
         assert page.locator("#currencyTable .pagination-ellipsis").count() == 2
         page.locator("#currencyPeriod").select_option("all")
         assert page.locator("#currencyChart .reward-dot").count() <= 24
+        page.locator("#currencyView").select_option("balance")
+        assert page.locator("#currencyDelta").inner_text() == "+8.24000 stETH"
+        page.locator("#currencyPeriod").select_option("7")
+        assert page.locator("#currencyDeltaLabel").inner_text() == "期間増加分（7日）"
+        assert page.locator("#currencyDelta").inner_text() == "+0.06000 stETH"
+        assert page.locator("#currencyChart .reward-dot").count() == 7
         browser.close()
 
 
@@ -239,6 +283,7 @@ def test_change_display_includes_usd_and_jpy(server_url):
         install_routes(page, history=history)
         page.goto(server_url)
         page.wait_for_selector("#assets tbody tr")
+        assert page.locator(".comparison-metric .label").inner_text() == "前日保存比"
         assert page.locator("#change .comparison-amount").all_inner_texts() == ["+$19,203.59", "+¥3,108,485"]
         assert page.locator("#change .comparison-percent").inner_text() == "（9.14%）"
         amount_edges = page.locator("#change .comparison-amount").evaluate_all("els => els.map(el => Math.round(el.getBoundingClientRect().left))")
@@ -254,6 +299,9 @@ def test_change_display_includes_usd_and_jpy(server_url):
         assert page.locator("#trend .axis").first.get_attribute("x1") == "76"
         assert page.locator("#trend .axis").first.get_attribute("x2") == "714"
         assert page.locator("#trend .axis").count() == 5
+        assert page.locator("#trend .linechart").get_attribute("viewBox").startswith("-12 0")
+        assert page.locator("#trend .asset-axis-label").first.evaluate("el => getComputedStyle(el).fontSize") == "12px"
+        assert page.locator("#trend .asset-axis-label .chartlabel-sub").first.evaluate("el => getComputedStyle(el).fontSize") == "11px"
         assert page.locator("#trend .chartlabel").last.text_content() == "7/12"
         assert page.locator("#trend .chartlabel").last.get_attribute("text-anchor") == "end"
         browser.close()

@@ -26,7 +26,7 @@
     <section class="card hero">
       <div class="hero-grid">
         <div><div class="label">総資産（USD）</div><div class="total" id="total">—</div><div id="totalJpy" class="label">円換算 —</div></div>
-        <div class="metric comparison-metric"><div class="label">前回保存比</div><strong id="change" class="comparison-values">比較データなし</strong></div>
+        <div class="metric comparison-metric"><div class="label">前日保存比</div><strong id="change" class="comparison-values">比較データなし</strong></div>
         <div class="metric"><div class="label">換算レート</div><strong id="fxNote">USD/JPY —</strong></div>
         <div class="metric"><div class="label">最終更新</div><strong id="freshness">—</strong></div>
       </div>
@@ -44,10 +44,10 @@
   </section>
 
   <section id="currency" class="view">
-    <div class="page-head"><div><h1>通貨推移</h1><p class="note">通貨ごとの残高と、前回記録日からの日次増加量を表示します。</p></div></div>
-    <section class="card currency-controls"><label>表示する通貨<select id="currencySelect"></select></label></section>
-    <section class="grid2 currency-summary"><section class="card"><div class="label">現在残高</div><div class="total currency-total" id="currencyTotal">—</div><div class="fiat-lines" id="currencyTotalValue"><span>USD —</span><span>JPY —</span></div></section><section class="card"><div class="label">直近の日次増加</div><div class="total currency-total" id="currencyDelta">—</div><div class="fiat-lines" id="currencyDeltaValue"><span>USD —</span><span>JPY —</span></div></section></section>
-    <section class="card section"><div class="section-head"><div><h2 id="currencyChartTitle">日次増加量</h2><p class="note">Rewardのみを表示。Transfer/Staking入金は含めません。</p></div><label>グラフ期間<select id="currencyPeriod"><option value="7" selected>7d</option><option value="30">30d</option><option value="90">90d</option><option value="all">All</option></select></label></div><div id="currencyChart"></div><div id="currencyTable"></div></section>
+    <div class="page-head"><div><h1>通貨推移</h1><p class="note">通貨ごとの日次増加量と残高推移を切り替えて表示します。</p></div></div>
+    <section class="card currency-controls"><label>表示する通貨<select id="currencySelect"></select></label><label>表示内容<select id="currencyView"><option value="change" selected>日次増加量</option><option value="balance">資産推移</option></select></label></section>
+    <section class="grid2 currency-summary"><section class="card"><div class="label">現在残高</div><div class="total currency-total" id="currencyTotal">—</div><div class="fiat-lines" id="currencyTotalValue"><span>USD —</span><span>JPY —</span></div></section><section class="card"><div class="label" id="currencyDeltaLabel">前日からの増加分</div><div class="total currency-total" id="currencyDelta">—</div><div class="fiat-lines" id="currencyDeltaValue"><span>USD —</span><span>JPY —</span></div></section></section>
+    <section class="card section"><div class="section-head"><div><h2 id="currencyChartTitle">日次増加量</h2><p class="note" id="currencyChartNote">前の記録日からの残高差を表示します。入出金や報酬の内訳は区別しません。</p></div><label>グラフ期間<select id="currencyPeriod"><option value="7" selected>7d</option><option value="30">30d</option><option value="90">90d</option><option value="all">All</option></select></label></div><div id="currencyChart"></div><div id="currencyTable"></div></section>
   </section>
 
   <section id="update" class="view">
@@ -75,6 +75,7 @@
 </main>
 
 <script src="/portfolio-core.js"></script>
+<script src="/display-config.js"></script>
 <script src="/app-ui.js"></script>
 </body>
 </html>
