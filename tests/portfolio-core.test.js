@@ -118,3 +118,17 @@ test('stETH history bridges the final CSV balance to the first daily snapshot',(
   assert.ok(Math.abs(rows[4].apr-(0.0073/119.7232*365*100))<1e-12);
   assert.equal(rows[4].balanceUsd,225053.90);
 });
+
+test('stETH history excludes transfers and prefers imported rewards over snapshots',()=>{
+  const csv=[
+    {date:'2026-07-11T12:00:00Z',type:'reward',change:'0.01',change_USD:'20',apr:'2',balance:'100.01'},
+    {date:'2026-07-12T03:00:00Z',type:'transfer',direction:'in',change:'50',change_USD:'100000',balance:'150.01'},
+    {date:'2026-07-12T12:00:00Z',type:'reward',change:'0.02',change_USD:'40',apr:'2',balance:'150.03'},
+  ];
+  const snapshots=[{wallet_id:'w1',as_of_date:'2026-07-12',captured_at:'2026-07-12T23:00:00Z',protocols:[{panels:[{assets:[{asset_symbol:'stETH',amount_value:'150.03',usd_value:'300060'}]}]}]}];
+  const rows=Core.stethRewardHistory(csv,snapshots,[],'2026-07-12');
+  assert.deepEqual(rows.map(row=>[row.date,row.change,row.source]),[
+    ['2026-07-11',0.01,'csv'],
+    ['2026-07-12',0.02,'csv'],
+  ]);
+});

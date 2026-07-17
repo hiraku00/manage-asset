@@ -166,7 +166,8 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         page.wait_for_selector("#currencyTable tbody tr")
         assert page.locator("#currencySelect option").first.inner_text() == "stETH（119.7089）"
         assert page.locator("#currencyTotal").inner_text() == "119.7305 stETH"
-        assert page.locator("#currencyDelta").inner_text() == "+0.00730 stETH"
+        assert page.locator("#currencyDeltaLabel").inner_text() == "期間報酬（7日）"
+        assert page.locator("#currencyDelta").inner_text() == "+0.02886 stETH"
         assert page.locator("#currencyTotalValue").bounding_box()["x"] > page.locator("#currencyTotal").bounding_box()["x"]
         assert page.locator("#currencyTable thead th").all_inner_texts() == ["Date", "Rate\n(stETH)", "Rate\n(USD/JPY)", "APR", "Reward\n(stETH)", "Reward\n(USD/JPY)", "Balance\n(stETH)", "Balance\n(USD/JPY)"]
         rows = page.locator("#currencyTable tbody tr")
@@ -195,8 +196,10 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         page.locator("#currencyPeriod").select_option("30")
         assert page.locator("#currencyTable tbody tr").all_inner_texts() == before
         page.locator("#currencyView").select_option("balance")
-        assert page.locator("#currencyDeltaLabel").inner_text() == "期間増加分（30日）"
-        assert page.locator("#currencyDelta").inner_text() == "+0.02165 stETH"
+        assert page.locator("#currencyDeltaLabel").inner_text() == "USD評価額の期間増減（30日）"
+        assert page.locator("#currencyDelta").inner_text() == "+$10,317.59"
+        assert page.locator("#currencyDelta").evaluate("el => el.classList.contains('fiat-primary')")
+        assert page.locator("#currencyDeltaValue .fiat-row").inner_text().splitlines() == ["JPY", "+¥1,712,372"]
         assert page.locator("#currencyChartTitle").inner_text() == "stETHの資産推移"
         assert page.locator("#currencyChart .currency-balance-chart").count() == 1
         assert page.locator("#currencyTotal").inner_text() == "119.7305 stETH"
@@ -222,8 +225,8 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         change_fiat_box = page.locator("#currencyTable tbody tr").first.locator("td").nth(5).bounding_box()
         assert change_fiat_box["x"] - (change_token_box["x"] + change_token_box["width"]) <= 1
         page.locator("#currencyView").select_option("change")
-        assert page.locator("#currencyDeltaLabel").inner_text() == "前日からの増加分"
-        assert page.locator("#currencyDelta").inner_text() == "+0.00730 stETH"
+        assert page.locator("#currencyDeltaLabel").inner_text() == "期間報酬（30日）"
+        assert page.locator("#currencyDelta").inner_text() == "+0.02886 stETH"
         browser.close()
 
 
@@ -257,10 +260,10 @@ def test_currency_pagination_uses_numbered_pages_and_ellipses(server_url):
         page.locator("#currencyPeriod").select_option("all")
         assert page.locator("#currencyChart .reward-dot").count() <= 24
         page.locator("#currencyView").select_option("balance")
-        assert page.locator("#currencyDelta").inner_text() == "+8.24000 stETH"
+        assert page.locator("#currencyDelta").inner_text() == "+$8,240.00"
         page.locator("#currencyPeriod").select_option("7")
-        assert page.locator("#currencyDeltaLabel").inner_text() == "期間増加分（7日）"
-        assert page.locator("#currencyDelta").inner_text() == "+0.06000 stETH"
+        assert page.locator("#currencyDeltaLabel").inner_text() == "USD評価額の期間増減（7日）"
+        assert page.locator("#currencyDelta").inner_text() == "+$70.00"
         assert page.locator("#currencyChart .reward-dot").count() == 7
         browser.close()
 
