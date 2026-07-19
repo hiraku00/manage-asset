@@ -139,11 +139,9 @@ node --check static/app-ui.js
 
 ## 設計資料
 
-- [UI/UX監査・改修仕様書（DADS準拠方針・アクセシビリティ基準）](docs/ui-ux-audit-dads.md)（監査ベースライン。現行の見た目・モーション仕様ではありません）
+- 設計ドキュメントの入口: [docs/README.md](docs/README.md)
 - [Apple Design UI方針（現行）](docs/ui-design-principles.md)
 - [暗号資産取引所統合・ダッシュボード詳細設計書](docs/exchange-integration-design.md)
-- [暗号資産ウォレット管理アプリ MVP 設計書](docs/crypto-asset-tracker-design.md)
-- [暗号資産ダッシュボード UX再設計書](docs/dashboard-ux-redesign.md)
 
 ## GitHub公開時の注意
 
