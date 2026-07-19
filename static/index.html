@@ -3,20 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1013" media="(prefers-color-scheme: dark)">
   <title>暗号資産ポートフォリオ</title>
+  <script>try{const theme=localStorage.getItem('portfolio-theme');if(theme==='light'||theme==='dark')document.documentElement.dataset.theme=theme}catch(error){}</script>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 <header class="topbar">
   <div class="bar-inner">
-    <div class="brand">暗号資産ポートフォリオ</div>
+    <div class="brand" aria-label="暗号資産ポートフォリオ">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 17.5V12m5 5.5V7m5 10.5v-8m5 8V4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span>
+      <span class="brand-copy">Portfolio<small>Private wealth</small></span>
+    </div>
     <nav aria-label="メインナビゲーション">
-      <button class="nav active" data-view="overview" aria-current="page">資産概要</button>
-      <button class="nav" data-view="locations" aria-current="false">保管場所</button>
-      <button class="nav" data-view="currency" aria-current="false">通貨推移</button>
-      <button class="nav" data-view="update" aria-current="false">データ更新</button>
-      <button class="nav" data-view="settings" aria-current="false">設定</button>
+      <button class="nav active" data-view="overview" aria-current="page"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-13h6V4h-6v3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>資産概要</span></button>
+      <button class="nav" data-view="locations" aria-current="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 8.5h17v11h-17v-11Zm2-4h13l2 4h-17l2-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="17" cy="14" r="1.5" fill="currentColor"/></svg><span>保管場所</span></button>
+      <button class="nav" data-view="currency" aria-current="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 16 5-5 4 3 7-8m0 0h-5m5 0v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>通貨推移</span></button>
+      <button class="nav" data-view="update" aria-current="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.5 8A8 8 0 1 0 20 15m-.5-7V3.5M19.5 8H15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>データ更新</span></button>
+      <button class="nav" data-view="settings" aria-current="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h10m4 0h2M4 17h2m4 0h10M14 4v6M6 14v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="7" r="2" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="17" r="2" stroke="currentColor" stroke-width="1.8"/></svg><span>設定</span></button>
     </nav>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="ダークモードに切り替える" title="表示モードを切り替える">
+      <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
     <span class="sr" id="updated"></span>
   </div>
 </header>
