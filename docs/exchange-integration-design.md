@@ -401,12 +401,7 @@ data/
 
 ## 13. UI/UX、アクセシビリティ、Apple Design
 
-情報設計とアクセシビリティはDADS監査をベースラインとして維持し、現行の見た目・テーマ・モーションは [Apple Design UI方針](ui-design-principles.md) を正とする。単に青色やガラス表現を模倣せず、情報階層、状態、直接操作、可逆性、テーマ間の可読性を一貫させる。
-
-- [デジタル庁デザインシステム](https://design.digital.go.jp/dads/)
-- [カラー](https://design.digital.go.jp/dads/foundations/color/)
-- [スタイルガイド](https://design.digital.go.jp/dads/guidance/style-guides/)
-- [テーブル／データテーブル](https://design.digital.go.jp/dads/components/table/)
+情報設計、アクセシビリティ、見た目、テーマ、モーションは [Apple Design UI方針](ui-design-principles.md) を正とする。単に青色やガラス表現を模倣せず、情報階層、状態、直接操作、可逆性、テーマ間の可読性を一貫させる。
 
 適用規則:
 
@@ -653,7 +648,7 @@ Binance、Bybit、Lidoは保管場所であり資産行にならない
 - 秘密情報: macOS Keychain
 - 権限: 読取専用、出金権限禁止
 - 保存: schema v2 JSONL、schema v1読取互換
-- UI: DADSのアクセシビリティ要件を満たし、Apple Design方針のマテリアル・テーマ・モーションで資産把握を設定より優先
+- UI: 現行UI方針のアクセシビリティ要件を満たし、Apple Design方針のマテリアル・テーマ・モーションで資産把握を設定より優先
 
 実装前に利用者判断が必要なのは、実際に使う取引所の優先順位と、取引所内JPYを総資産へ含める既定値を変えたい場合だけとする。
 
@@ -667,4 +662,4 @@ Binance、Bybit、Lidoは保管場所であり資産行にならない
 - 総資産、資産内訳、保管場所内訳の照合差が許容内である。
 - 保存済み履歴だけで推移を描く。
 - 狭い画面と200%ズームで情報が欠落しない。
-- DADSに基づくコントラスト、フォーカス、状態、データテーブル要件を満たし、ライト／ダーク双方で実機確認する。
+- コントラスト、フォーカス、状態、データテーブル要件を満たし、ライト／ダーク双方で実機確認する。
