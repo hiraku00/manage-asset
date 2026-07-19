@@ -4,7 +4,7 @@
 - 作成日: 2026-07-11
 - 対象: 個人利用・ローカル Web アプリ
 - 状態: 実装済み仕様（2026-07-14時点の画面・取得処理を反映）
-- 関連文書: [crypto-asset-tracker-design.md](crypto-asset-tracker-design.md)、[dashboard-ux-redesign.md](dashboard-ux-redesign.md)
+- 関連文書: [設計ドキュメント入口](README.md)、[UI Design Principles](ui-design-principles.md)
 
 ## 1. 設計の結論
 
@@ -640,7 +640,7 @@ Binance、Bybit、Lidoは保管場所であり資産行にならない
 6. Coincheck、bitbank、GMOコイン、BitTrade。
 7. ナビゲーション、統合ダッシュボード、資産詳細、保管場所一覧。
 8. 取引所詳細、更新、設定。
-9. DADS準拠、レスポンシブ、アクセシビリティの実機確認。
+9. 現行UI方針に沿ったテーマ、レスポンシブ、アクセシビリティの実機確認。
 10. Earn、Funding、Margin、Derivativesは個別設計後に拡張。
 
 ## 22. 実装時の既定値
