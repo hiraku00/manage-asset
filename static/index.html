@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0f1013" media="(prefers-color-scheme: dark)">
   <title>暗号資産ポートフォリオ</title>
+  <script>try{const theme=localStorage.getItem('portfolio-theme');if(theme==='light'||theme==='dark')document.documentElement.dataset.theme=theme}catch(error){}</script>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -22,6 +23,10 @@
       <button class="nav" data-view="update" aria-current="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.5 8A8 8 0 1 0 20 15m-.5-7V3.5M19.5 8H15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>データ更新</span></button>
       <button class="nav" data-view="settings" aria-current="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h10m4 0h2M4 17h2m4 0h10M14 4v6M6 14v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="7" r="2" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="17" r="2" stroke="currentColor" stroke-width="1.8"/></svg><span>設定</span></button>
     </nav>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="ダークモードに切り替える" title="表示モードを切り替える">
+      <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
     <span class="sr" id="updated"></span>
   </div>
 </header>

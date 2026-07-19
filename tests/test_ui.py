@@ -85,6 +85,29 @@ def test_top_navigation_uses_distinct_box_tabs(server_url):
         browser.close()
 
 
+def test_theme_toggle_persists_and_keeps_dark_mode_text_legible(server_url):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000}, color_scheme="light")
+        install_routes(page)
+        page.goto(server_url)
+        page.wait_for_selector("#allocation .donut-total")
+        toggle = page.locator("#themeToggle")
+        assert toggle.get_attribute("aria-label") == "ダークモードに切り替える"
+        toggle.click()
+        assert page.locator("html").get_attribute("data-theme") == "dark"
+        assert toggle.get_attribute("aria-label") == "ライトモードに切り替える"
+        assert page.locator("#allocation .donut-total").evaluate("el => getComputedStyle(el).fill") == "rgb(245, 245, 247)"
+        page.get_by_role("button", name="設定", exact=True).click()
+        page.wait_for_selector(".source-credentials")
+        assert page.locator(".source-credentials").first.evaluate("el => getComputedStyle(el).color") == "rgb(121, 183, 255)"
+        page.reload()
+        page.wait_for_selector("#themeToggle")
+        assert page.locator("html").get_attribute("data-theme") == "dark"
+        assert page.locator("#themeToggle").get_attribute("aria-label") == "ライトモードに切り替える"
+        browser.close()
+
+
 def test_asset_history_period_only_filters_the_chart(server_url):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
