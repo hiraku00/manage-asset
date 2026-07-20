@@ -96,6 +96,8 @@ def test_desktop_navigation_supports_mac_style_alt_number_shortcuts(server_url):
         assert page.locator("#currency.active").is_visible()
         assert page.get_by_role("button", name="通貨推移", exact=True).get_attribute("aria-current") == "page"
         assert page.get_by_role("button", name="通貨推移", exact=True).get_attribute("aria-keyshortcuts") == "Alt+3"
+        page.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', {key: '§', code: 'Digit4', altKey: true, bubbles: true}))")
+        assert page.locator("#update.active").is_visible()
         browser.close()
 
 

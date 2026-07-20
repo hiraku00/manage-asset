@@ -67,7 +67,7 @@
 
   const navButtons=[...document.querySelectorAll('.nav')];
   navButtons.forEach((button,index)=>{const shortcut=`Alt+${index+1}`;button.setAttribute('aria-keyshortcuts',shortcut);button.title=`${button.textContent.trim()}（⌥${index+1}）`;button.addEventListener('click',()=>{navButtons.forEach(item=>{const active=item===button;item.classList.toggle('active',active);item.setAttribute('aria-current',active?'page':'false')});document.querySelectorAll('.view').forEach(view=>view.classList.toggle('active',view.id===button.dataset.view));scrollTo({top:0,behavior:'smooth'})})});
-  document.addEventListener('keydown',event=>{if(!event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;const index=Number(event.key)-1;if(index<0||index>=navButtons.length)return;event.preventDefault();navButtons[index].click()});
+  document.addEventListener('keydown',event=>{if(!event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;const codeDigit=/^Digit([1-5])$/.exec(event.code||'')?.[1];const keyDigit=/^[1-5]$/.test(event.key||'')?event.key:null;const index=Number(codeDigit||keyDigit)-1;if(index<0||index>=navButtons.length)return;event.preventDefault();navButtons[index].click()});
   $('themeToggle')?.addEventListener('click',toggleTheme);
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(!document.documentElement.dataset.theme)updateThemeControl()});
   $('dust').addEventListener('change',()=>renderAssets(Core.holdings(state),Core.total(state)));
