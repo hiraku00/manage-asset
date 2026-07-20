@@ -140,6 +140,8 @@ def test_asset_history_period_only_filters_the_chart(server_url):
         assert page.locator("#trend .dot").count() == 7
         page.locator("#trend .dot").first.hover()
         assert page.locator("#trend .chart-tooltip.visible").inner_text().startswith("2026-07-")
+        assert page.locator("#trend .chart-tooltip-line").count() == 3
+        assert page.locator("#trend .chart-tooltip-label").all_inner_texts() == ["USD", "JPY"]
         page.locator("#assetPeriod").select_option("all")
         assert page.locator("#trend .dot").count() == 10
         chart_box = page.locator("#trend").locator("xpath=..").bounding_box()
