@@ -115,6 +115,8 @@ def test_theme_toggle_persists_and_keeps_dark_mode_text_legible(server_url):
         toggle.click()
         assert page.locator("html").get_attribute("data-theme") == "dark"
         assert toggle.get_attribute("aria-label") == "ライトモードに切り替える"
+        assert page.locator("body").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(22, 22, 24)"
+        assert page.locator(".card").first.evaluate("el => getComputedStyle(el).backdropFilter") == "blur(28px) saturate(1.4)"
         assert page.locator("#allocation .donut-total").evaluate("el => getComputedStyle(el).fill") == "rgb(245, 245, 247)"
         page.get_by_role("button", name="設定", exact=True).click()
         page.wait_for_selector(".source-credentials")
