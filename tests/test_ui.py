@@ -235,6 +235,8 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         assert page.locator("#currencyChart .reward-line").count() == 1
         assert page.locator("#currencyChart .reward-line").evaluate("el => getComputedStyle(el).stroke") == page.locator("#trend .line").evaluate("el => getComputedStyle(el).stroke")
         assert page.locator("#currencyChart .reward-area").evaluate("el => getComputedStyle(el).fill") == "rgba(10, 132, 255, 0.09)"
+        page.locator("#currencyChart .reward-dot").first.hover()
+        assert page.locator("#currencyChart .chart-tooltip.visible").is_visible()
         assert page.locator("#currencyTable .currency-page.active").inner_text() == "1"
         before = rows.all_inner_texts()
         header_positions = page.locator("#currencyTable thead th").evaluate_all("els => els.map(el => Math.round(el.getBoundingClientRect().left))")
