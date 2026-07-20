@@ -110,6 +110,8 @@ def test_theme_toggle_persists_and_keeps_dark_mode_text_legible(server_url):
         page.wait_for_selector("#allocation .donut-total")
         toggle = page.locator("#themeToggle")
         assert toggle.get_attribute("aria-label") == "ダークモードに切り替える"
+        assert page.locator(".card").first.evaluate("el => getComputedStyle(el).backdropFilter") == "blur(28px) saturate(1.55)"
+        assert page.locator("body").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(233, 233, 238)"
         toggle.click()
         assert page.locator("html").get_attribute("data-theme") == "dark"
         assert toggle.get_attribute("aria-label") == "ライトモードに切り替える"
