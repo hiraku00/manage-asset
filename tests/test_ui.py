@@ -232,7 +232,7 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         assert "¥" in axis_text
         assert page.locator("#currencyChart .reward-line").count() == 1
         assert page.locator("#currencyChart .reward-line").evaluate("el => getComputedStyle(el).stroke") == page.locator("#trend .line").evaluate("el => getComputedStyle(el).stroke")
-        assert "0.14" in page.locator("#currencyChart .reward-area").evaluate("el => getComputedStyle(el).fill")
+        assert page.locator("#currencyChart .reward-area").evaluate("el => getComputedStyle(el).fill") == "rgba(10, 132, 255, 0.09)"
         assert page.locator("#currencyTable .currency-page.active").inner_text() == "1"
         before = rows.all_inner_texts()
         header_positions = page.locator("#currencyTable thead th").evaluate_all("els => els.map(el => Math.round(el.getBoundingClientRect().left))")

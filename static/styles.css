@@ -6,6 +6,10 @@
   --action-hover: #00118f;
   --accent: #0a84ff;
   --accent-soft: rgba(10, 132, 255, .12);
+  --chart-line: #0a84ff;
+  --chart-area: rgba(10, 132, 255, .09);
+  --chart-grid: rgba(60, 60, 67, .16);
+  --chart-point: #0a84ff;
   --ink: #17171a;
   --muted: #66666d;
   --faint: #8a8a92;
@@ -173,11 +177,12 @@ h3 { margin: 0; font-size: 1rem; letter-spacing: -.01em; }
 .empty { padding: 72px 10px; text-align: center; color: var(--muted); }
 
 .linechart { display: block; width: 100%; height: 300px; overflow: visible; }
-.axis { stroke: var(--line-strong); }
-.line, .reward-line { fill: none; stroke: var(--blue); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.area, .reward-area { fill: rgba(0,23,193,.14); }
-.dot, .reward-dot { fill: var(--blue); stroke: #fff; stroke-width: 2; }
-.chartlabel { font-size: 11px; fill: var(--muted); }
+.axis { stroke: var(--chart-grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.line, .reward-line { fill: none; stroke: var(--chart-line); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.area, .reward-area { fill: var(--chart-area); }
+.dot, .reward-dot { fill: var(--chart-point); stroke: var(--surface-solid); stroke-width: 2; opacity: .82; vector-effect: non-scaling-stroke; transition: opacity 160ms ease, stroke-width 160ms ease; }
+.dot:hover, .dot:focus, .reward-dot:hover, .reward-dot:focus { opacity: 1; stroke-width: 3; outline: none; }
+.chartlabel { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
 .asset-axis-label { font-size: 12px; }
 .asset-axis-label .chartlabel-sub { font-size: 11px; }
 .chartlabel-sub { font-size: 10px; fill: var(--faint); }
@@ -356,6 +361,7 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
   --bg: #161618; --surface: rgba(44,44,46,.68); --surface-solid: #2c2c2e; --surface-raised: rgba(50,50,52,.78);
   --window-chrome: rgba(28,28,30,.72);
   --blue: #64b5ff; --blue-dark: #8bc8ff; --accent: #0a84ff; --accent-soft: rgba(10,132,255,.18);
+  --chart-line: #64b5ff; --chart-area: rgba(100,181,255,.12); --chart-grid: rgba(235,235,245,.16); --chart-point: #64b5ff;
   --action: #0a84ff; --action-hover: #409cff; --good: #63d995; --warn: #f1c45f; --bad: #ff7185;
 }
 :root[data-theme="dark"] body { background: radial-gradient(circle at 8% 0%, rgba(10,132,255,.14), transparent 30rem), radial-gradient(circle at 96% 14%, rgba(94,92,230,.11), transparent 26rem), linear-gradient(145deg, rgba(255,255,255,.025), transparent 42%), var(--bg); }
@@ -382,6 +388,7 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
     --bg: #161618; --surface: rgba(44,44,46,.68); --surface-solid: #2c2c2e; --surface-raised: rgba(50,50,52,.78);
     --window-chrome: rgba(28,28,30,.72);
     --blue: #64b5ff; --blue-dark: #8bc8ff; --accent: #0a84ff; --accent-soft: rgba(10,132,255,.18);
+    --chart-line: #64b5ff; --chart-area: rgba(100,181,255,.12); --chart-grid: rgba(235,235,245,.16); --chart-point: #64b5ff;
     --action: #0a84ff; --action-hover: #409cff; --good: #63d995; --warn: #f1c45f; --bad: #ff7185;
   }
   :root:not([data-theme="light"]) body { background: radial-gradient(circle at 8% 0%, rgba(10,132,255,.14), transparent 30rem), radial-gradient(circle at 96% 14%, rgba(94,92,230,.11), transparent 26rem), linear-gradient(145deg, rgba(255,255,255,.025), transparent 42%), var(--bg); }
