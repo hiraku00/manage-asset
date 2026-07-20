@@ -85,6 +85,20 @@ def test_top_navigation_uses_distinct_box_tabs(server_url):
         browser.close()
 
 
+def test_desktop_navigation_supports_mac_style_alt_number_shortcuts(server_url):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        install_routes(page)
+        page.goto(server_url)
+        page.wait_for_selector("#assets tbody tr")
+        page.keyboard.press("Alt+3")
+        assert page.locator("#currency.active").is_visible()
+        assert page.get_by_role("button", name="通貨推移", exact=True).get_attribute("aria-current") == "page"
+        assert page.get_by_role("button", name="通貨推移", exact=True).get_attribute("aria-keyshortcuts") == "Alt+3"
+        browser.close()
+
+
 def test_theme_toggle_persists_and_keeps_dark_mode_text_legible(server_url):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
