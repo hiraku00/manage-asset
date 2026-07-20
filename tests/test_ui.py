@@ -85,6 +85,22 @@ def test_top_navigation_uses_distinct_box_tabs(server_url):
         browser.close()
 
 
+def test_desktop_navigation_supports_mac_style_alt_number_shortcuts(server_url):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        install_routes(page)
+        page.goto(server_url)
+        page.wait_for_selector("#assets tbody tr")
+        page.keyboard.press("Alt+3")
+        assert page.locator("#currency.active").is_visible()
+        assert page.get_by_role("button", name="通貨推移", exact=True).get_attribute("aria-current") == "page"
+        assert page.get_by_role("button", name="通貨推移", exact=True).get_attribute("aria-keyshortcuts") == "Alt+3"
+        page.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', {key: '§', code: 'Digit4', altKey: true, bubbles: true}))")
+        assert page.locator("#update.active").is_visible()
+        browser.close()
+
+
 def test_theme_toggle_persists_and_keeps_dark_mode_text_legible(server_url):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
@@ -94,9 +110,13 @@ def test_theme_toggle_persists_and_keeps_dark_mode_text_legible(server_url):
         page.wait_for_selector("#allocation .donut-total")
         toggle = page.locator("#themeToggle")
         assert toggle.get_attribute("aria-label") == "ダークモードに切り替える"
+        assert page.locator(".card").first.evaluate("el => getComputedStyle(el).backdropFilter") == "blur(28px) saturate(1.55)"
+        assert page.locator("body").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(233, 233, 238)"
         toggle.click()
         assert page.locator("html").get_attribute("data-theme") == "dark"
         assert toggle.get_attribute("aria-label") == "ライトモードに切り替える"
+        assert page.locator("body").evaluate("el => getComputedStyle(el).backgroundColor") == "rgb(22, 22, 24)"
+        assert page.locator(".card").first.evaluate("el => getComputedStyle(el).backdropFilter") == "blur(28px) saturate(1.4)"
         assert page.locator("#allocation .donut-total").evaluate("el => getComputedStyle(el).fill") == "rgb(245, 245, 247)"
         page.get_by_role("button", name="設定", exact=True).click()
         page.wait_for_selector(".source-credentials")
@@ -118,6 +138,10 @@ def test_asset_history_period_only_filters_the_chart(server_url):
         page.wait_for_selector("#trend .dot")
         assert page.locator("#assetPeriod").input_value() == "7"
         assert page.locator("#trend .dot").count() == 7
+        page.locator("#trend .dot").first.hover()
+        assert page.locator("#trend .chart-tooltip.visible").inner_text().startswith("2026-07-")
+        assert page.locator("#trend .chart-tooltip-line").count() == 3
+        assert page.locator("#trend .chart-tooltip-label").all_inner_texts() == ["USD", "JPY"]
         page.locator("#assetPeriod").select_option("all")
         assert page.locator("#trend .dot").count() == 10
         chart_box = page.locator("#trend").locator("xpath=..").bounding_box()
@@ -212,7 +236,9 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         assert "¥" in axis_text
         assert page.locator("#currencyChart .reward-line").count() == 1
         assert page.locator("#currencyChart .reward-line").evaluate("el => getComputedStyle(el).stroke") == page.locator("#trend .line").evaluate("el => getComputedStyle(el).stroke")
-        assert "0.14" in page.locator("#currencyChart .reward-area").evaluate("el => getComputedStyle(el).fill")
+        assert page.locator("#currencyChart .reward-area").evaluate("el => getComputedStyle(el).fill") == "rgba(10, 132, 255, 0.09)"
+        page.locator("#currencyChart .reward-dot").first.hover()
+        assert page.locator("#currencyChart .chart-tooltip.visible").is_visible()
         assert page.locator("#currencyTable .currency-page.active").inner_text() == "1"
         before = rows.all_inner_texts()
         header_positions = page.locator("#currencyTable thead th").evaluate_all("els => els.map(el => Math.round(el.getBoundingClientRect().left))")
