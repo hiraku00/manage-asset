@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.manage-asset.daily-update</string>
+
+  <!-- Replace these two paths if the project or virtualenv moves. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/python3</string>
+    <string>/Users/hiraku/Practice/manage-asset/scripts/daily_update.py</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- Do not run immediately at login; only run at the scheduled time. -->
+  <key>RunAtLoad</key>
+  <false/>
+  <key>WorkingDirectory</key>
+  <string>/Users/hiraku/Practice/manage-asset</string>
+  <key>StandardOutPath</key>
+  <string>/Users/hiraku/Practice/manage-asset/data/launchd.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/hiraku/Practice/manage-asset/data/launchd.stderr.log</string>
+</dict>
+</plist>
