@@ -252,6 +252,8 @@ def test_steth_csv_to_snapshot_transition_renders_correct_daily_changes(server_u
         assert page.locator("#currencyChartTitle").inner_text() == "stETHの資産推移"
         assert page.locator("#currencyChart .currency-balance-chart").count() == 1
         assert page.locator("#currencyTotal").inner_text() == "119.7305 stETH"
+        page.locator("#currencyChart .reward-dot").first.hover()
+        assert page.locator("#currencyChart .chart-tooltip-label").all_inner_texts() == ["USD", "JPY", "stETH"]
         axis_text = page.locator("#currencyChart .bar-axis-label").first.text_content()
         assert "$" in axis_text and "¥" in axis_text
         assert page.locator("#currencyTable thead th").nth(4).inner_text() == "Change\n(stETH)"
