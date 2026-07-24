@@ -96,6 +96,14 @@ test('generic currency history calculates rate, fiat values and APR',()=>{
   assert.equal(last.apr,11/100*365*100);
 });
 
+test('reconciliation ignores per-source integer rounding but reports material gaps',()=>{
+  const wallet=(total,usd)=>({wallet_id:String(total),wallet_name:'Wallet '+total,total_usd:total,tokens:[{symbol:'USDT',amount_value:'1',usd_value_display:String(usd)}],protocols:[]});
+  const rounded=Core.reconciliation({snapshots:[wallet(100,99.6)],exchange_snapshots:[]});
+  assert.equal(rounded.issues.length,0);
+  const mismatch=Core.reconciliation({snapshots:[wallet(100,98.9)],exchange_snapshots:[]});
+  assert.deepEqual(mismatch.issues.map(row=>row.name),['Wallet 100']);
+});
+
 test('stETH history bridges the final CSV balance to the first daily snapshot',()=>{
   const csv=[{date:'2026-07-11T12:00:00Z',type:'reward',change:'0.00721365',change_USD:'12.94',apr:'2.20',balance:'119.70885379510868'}];
   const steth=(wallet,date,captured,amount,usd)=>({wallet_id:wallet,as_of_date:date,captured_at:captured,fx_usdjpy:'162',protocols:[{panels:[{assets:[{asset_symbol:'stETH',amount_value:String(amount),usd_value:String(usd)}]}]}]});
