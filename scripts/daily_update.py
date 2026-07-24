@@ -8,6 +8,7 @@ the web server and therefore can run independently of the dashboard UI.
 from __future__ import annotations
 
 import fcntl
+import json
 import logging
 import sys
 import uuid
@@ -22,6 +23,7 @@ from debank_auto import fetch_wallets_html  # noqa: E402
 
 
 LOCK_FILE = app.DATA / "daily-update.lock"
+STATE_FILE = app.DATA / "daily-update-state.json"
 LOG = logging.getLogger("manage_asset.daily_update")
 
 
@@ -36,20 +38,24 @@ def acquire_lock():
     return lock
 
 
-def update_wallets(run_id: str, as_of_date: str) -> tuple[int, int]:
+def update_wallets(run_id: str, as_of_date: str, wallet_ids: set[str] | None = None) -> tuple[int, int, list[str]]:
     wallets = [wallet for wallet in app.load_wallets() if wallet.get("enabled", True)]
+    if wallet_ids is not None:
+        wallets = [wallet for wallet in wallets if wallet.get("wallet_id") in wallet_ids]
     if not wallets:
         LOG.info("No enabled wallets configured")
-        return 0, 0
+        return 0, 0, []
 
     success = 0
     failed = 0
+    failed_ids: list[str] = []
     fx_rate = app.usd_jpy_rate()
 
     def handle(fetched) -> None:
         nonlocal success, failed
         if fetched.html is None:
             failed += 1
+            failed_ids.append(fetched.wallet_id)
             app.append_jsonl(app.RUNS_FILE, {
                 "schema_version": 1,
                 "record_type": "import_event",
@@ -91,19 +97,23 @@ def update_wallets(run_id: str, as_of_date: str) -> tuple[int, int]:
             LOG.info("Wallet %s updated", fetched.name)
         except Exception as exc:  # noqa: BLE001 - continue with other wallets
             failed += 1
+            failed_ids.append(fetched.wallet_id)
             LOG.exception("Wallet %s could not be saved: %s", fetched.name, exc)
 
     fetch_wallets_html(wallets, on_result=handle)
-    return success, failed
+    return success, failed, failed_ids
 
 
-def update_exchanges(run_id: str) -> tuple[int, int]:
+def update_exchanges(run_id: str, source_ids: set[str] | None = None) -> tuple[int, int, list[str]]:
     sources = [
         source for source in app.load_sources()
         if source.get("enabled", True) and source.get("credential_ref")
     ]
+    if source_ids is not None:
+        sources = [source for source in sources if source.get("source_id") in source_ids]
     success = 0
     failed = 0
+    failed_ids: list[str] = []
     for source in sources:
         try:
             snapshot = app.build_exchange_snapshot(source)
@@ -123,8 +133,45 @@ def update_exchanges(run_id: str) -> tuple[int, int]:
             LOG.info("Exchange %s updated", source.get("display_name"))
         except Exception as exc:  # noqa: BLE001 - continue with other sources
             failed += 1
+            failed_ids.append(source["source_id"])
             LOG.exception("Exchange %s failed: %s", source.get("display_name"), exc)
-    return success, failed
+    return success, failed, failed_ids
+
+
+def load_retry_state(as_of_date: str) -> tuple[set[str] | None, set[str] | None]:
+    """Return failed targets from today's earlier attempt, if any.
+
+    A missing or stale state means this is the first attempt of the day and
+    all enabled targets should be fetched.
+    """
+    if not STATE_FILE.exists():
+        return None, None
+    try:
+        state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        LOG.warning("Could not read retry state; starting a full update")
+        return None, None
+    if state.get("as_of_date") != as_of_date:
+        return None, None
+    return set(state.get("failed_wallet_ids", [])), set(state.get("failed_source_ids", []))
+
+
+def save_retry_state(as_of_date: str, failed_wallet_ids: list[str], failed_source_ids: list[str]) -> None:
+    STATE_FILE.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "as_of_date": as_of_date,
+                "failed_wallet_ids": failed_wallet_ids,
+                "failed_source_ids": failed_source_ids,
+                "updated_at": app.now_iso(),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def main() -> int:
@@ -141,13 +188,22 @@ def main() -> int:
     try:
         run_id = "run_" + uuid.uuid4().hex[:12]
         as_of_date = date.today().isoformat()
-        wallet_success, wallet_failed = update_wallets(run_id, as_of_date)
-        exchange_success, exchange_failed = update_exchanges(run_id)
+        retry_wallet_ids, retry_source_ids = load_retry_state(as_of_date)
+        attempt_label = "initial" if retry_wallet_ids is None else "retry"
+        wallet_success, wallet_failed, failed_wallet_ids = update_wallets(
+            run_id, as_of_date, retry_wallet_ids
+        )
+        exchange_success, exchange_failed, failed_source_ids = update_exchanges(
+            run_id, retry_source_ids
+        )
+        save_retry_state(as_of_date, failed_wallet_ids, failed_source_ids)
         total_failed = wallet_failed + exchange_failed
         LOG.info(
-            "Daily update finished: wallets=%d/%d, exchanges=%d/%d",
+            "Daily update finished (%s): wallets=%d/%d, exchanges=%d/%d, retry_targets=%d",
+            attempt_label,
             wallet_success, wallet_success + wallet_failed,
             exchange_success, exchange_success + exchange_failed,
+            total_failed,
         )
         return 1 if total_failed else 0
     finally:

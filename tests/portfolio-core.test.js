@@ -119,6 +119,13 @@ test('stETH history bridges the final CSV balance to the first daily snapshot',(
   assert.equal(rows[4].balanceUsd,225053.90);
 });
 
+test('stETH history falls back to same-date FX from another snapshot source',()=>{
+  const snapshots=[{wallet_id:'lido',as_of_date:'2026-07-24',captured_at:'2026-07-24T00:02:00Z',protocols:[{panels:[{assets:[{asset_symbol:'stETH',amount_value:'2',usd_value:'4000'}]}]}]}];
+  const exchangeSnapshots=[{source_id:'bitflyer',as_of_date:'2026-07-24',captured_at:'2026-07-24T00:03:00Z',fx_usdjpy:163.47,positions:[]}];
+  const snapshotRows=Core.stethRewardHistory([{date:'2026-07-23',type:'reward',change:'0.01',change_USD:'20',apr:'2',balance:'1'}],snapshots,[],'2026-07-12',exchangeSnapshots);
+  assert.equal(snapshotRows.at(-1).fx,163.47);
+});
+
 test('stETH history excludes transfers and prefers imported rewards over snapshots',()=>{
   const csv=[
     {date:'2026-07-11T12:00:00Z',type:'reward',change:'0.01',change_USD:'20',apr:'2',balance:'100.01'},
